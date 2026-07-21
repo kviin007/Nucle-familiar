@@ -1,0 +1,6 @@
+{
+  "name": "Núcleo Familiar",
+  "description": "Panel familiar premium para sincronizar metas, tareas, entradas de diario y juegos con un diseño limpio e intuitivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
