@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Usuario, TareaDiaria } from '../types';
+import { Usuario, TareaDiaria, Familia } from '../types';
 
 interface FamiliaScreenProps {
   usuarios: Usuario[];
   tareas: TareaDiaria[];
   onInviteClick: () => void;
   onUpdateUser: (uid: string, nombre: string, avatar_url: string) => Promise<void>;
+  currentUser: any;
+  familias: Familia[];
+  onSelectUser: (userId: string) => void;
 }
 
 const AVATAR_PRESETS = [
@@ -16,9 +19,16 @@ const AVATAR_PRESETS = [
   { name: 'Espacio', url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=150&h=150&fit=crop' },
 ];
 
-export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdateUser }: FamiliaScreenProps) {
-  const familyMembers = usuarios.filter(u => u.familia_id === 'fam_garcia');
+export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdateUser, currentUser, familias, onSelectUser }: FamiliaScreenProps) {
+  // Determine dynamic family based on logged-in user
+  const activeUser = usuarios.find(u => u.uid === currentUser?.uid) || currentUser;
+  const userFamilyId = activeUser?.familia_id || "";
+  const familyMembers = usuarios.filter(u => u.familia_id === userFamilyId);
+  const activeFamily = familias.find(f => f.familia_id === userFamilyId);
+  const invitationCode = activeFamily?.codigo_invitacion || "N/A";
+  const familyName = activeFamily?.nombre || "Mi Familia";
 
+  const [copied, setCopied] = useState(false);
   const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
@@ -30,6 +40,18 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
     if (total === 0) return 0;
     const completed = memberTasks.filter(t => t.estado === 'completada').length;
     return Math.round((completed / total) * 100);
+  };
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(invitationCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      onInviteClick(); // Call original handler if extra feedback is needed
+    } catch (e) {
+      console.error("Error copying invitation code:", e);
+      alert(`Código: ${invitationCode}`);
+    }
   };
 
   const handleSave = async () => {
@@ -52,22 +74,56 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
   return (
     <div className="space-y-8 animate-fade-in relative">
       {/* Header */}
-      <div className="text-center md:text-left">
-        <h2 className="font-sans text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight mb-1">Familia</h2>
-        <p className="font-sans text-sm text-gray-500">Mira cómo le va a cada miembro de tu equipo hoy, o edita sus perfiles.</p>
+      <div className="text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-sans text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight mb-1">
+            {familyName}
+          </h2>
+          <p className="font-sans text-sm text-gray-500">
+            Mira cómo le va a cada miembro de tu equipo hoy, o edita sus perfiles.
+          </p>
+        </div>
+        
+        {/* Dynamic Invite Code Display Pill */}
+        <button
+          onClick={handleCopyCode}
+          className={`px-5 py-2.5 rounded-2xl font-sans text-xs font-extrabold border flex items-center gap-2.5 shadow-sm transition-all active:scale-95 ${
+            copied 
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+              : 'bg-white text-brand-primary border-indigo-50 hover:bg-slate-50'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm font-bold">
+            {copied ? 'check_circle' : 'content_copy'}
+          </span>
+          <span>
+            {copied ? '¡Código Copiado!' : `Código: ${invitationCode}`}
+          </span>
+        </button>
       </div>
 
       {/* Grid of Members */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {familyMembers.map((member) => {
           const completion = getMemberCompletion(member.uid);
+          const isCurrentUser = member.uid === currentUser?.uid;
           
           return (
             <div
               key={member.uid}
-              className="flex flex-col items-center justify-center p-5 bg-white rounded-3xl border border-indigo-50/60 shadow-xl shadow-indigo-100/20 relative group cursor-pointer hover:shadow-md transition-all duration-300"
+              onClick={() => onSelectUser(member.uid)}
+              className={`flex flex-col items-center justify-center p-5 bg-white rounded-3xl border shadow-xl shadow-indigo-100/20 relative group cursor-pointer hover:shadow-md transition-all duration-300 ${
+                isCurrentUser ? 'border-brand-primary/30 ring-1 ring-brand-primary/10' : 'border-indigo-50/60'
+              } ${member.estado === 'suspendido' ? 'opacity-60 saturate-50' : ''}`}
             >
-              {/* Quick edit button */}
+              {/* Suspended badge */}
+              {member.estado === 'suspendido' && (
+                <div className="absolute top-3 left-3 bg-rose-50 text-rose-600 border border-rose-100 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-0.5 z-10">
+                  <span className="material-symbols-outlined text-[10px] font-bold">block</span>
+                  Susp.
+                </div>
+              )}
+              {/* Quick edit button - allowed for anyone or self editing */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -85,7 +141,7 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
               <div className="relative w-24 h-24 md:w-28 md:h-24 rounded-full p-[3px] bg-gradient-to-tr from-indigo-500 to-amber-400 mb-3">
                 <div className="w-full h-full rounded-full bg-white p-[2px]">
                   <div className="w-full h-full rounded-full overflow-hidden border border-slate-100 bg-gray-50">
-                    <img className="w-full h-full object-cover" src={member.avatar_url} alt={member.nombre} />
+                    <img className="w-full h-full object-cover" src={member.avatar_url} alt={member.nombre} referrerPolicy="no-referrer" />
                   </div>
                 </div>
 
@@ -94,12 +150,21 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
                   <span className="material-symbols-outlined text-xs font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
                     local_fire_department
                   </span>
-                  {member.racha_actual}
+                  {member.racha_actual ?? 0}
                 </div>
               </div>
 
-              <h3 className="font-sans text-base font-extrabold text-gray-900">{member.nombre}</h3>
-              <p className="font-sans text-xs text-gray-500 mb-2">{member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Guía'}</p>
+              <h3 className="font-sans text-base font-extrabold text-gray-900 flex items-center gap-1">
+                {member.nombre}
+                {isCurrentUser && (
+                  <span className="text-[9px] bg-indigo-100 text-brand-primary font-bold px-1.5 py-0.5 rounded-full">
+                    Tú
+                  </span>
+                )}
+              </h3>
+              <p className="font-sans text-xs text-gray-500 mb-2">
+                {member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Miembro'}
+              </p>
 
               {/* Completion Pill */}
               <div className="bg-slate-50 border border-slate-150 rounded-full px-3 py-1 flex items-center gap-1.5 mt-1">
@@ -112,14 +177,20 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
 
         {/* Add Member / Invite Placeholder */}
         <div
-          onClick={onInviteClick}
-          className="flex flex-col items-center justify-center p-5 bg-slate-50/50 rounded-3xl border-2 border-dashed border-indigo-100/85 cursor-pointer hover:bg-white hover:border-brand-primary/40 hover:shadow-lg hover:shadow-indigo-100/30 transition-all group"
+          onClick={handleCopyCode}
+          className="flex flex-col items-center justify-center p-5 bg-slate-50/50 rounded-3xl border-2 border-dashed border-indigo-100/85 cursor-pointer hover:bg-white hover:border-brand-primary/40 hover:shadow-lg hover:shadow-indigo-100/30 transition-all group text-center"
         >
           <div className="w-12 h-12 rounded-2xl bg-brand-light flex items-center justify-center mb-3 text-brand-primary group-hover:scale-105 transition-all">
-            <span className="material-symbols-outlined text-xl font-bold">add</span>
+            <span className="material-symbols-outlined text-xl font-bold">
+              {copied ? 'check' : 'share'}
+            </span>
           </div>
-          <h3 className="font-sans text-base font-bold text-gray-500 group-hover:text-brand-primary">Invitar</h3>
-          <p className="font-sans text-[10px] text-gray-400 text-center mt-1">Añade un nuevo miembro</p>
+          <h3 className="font-sans text-base font-bold text-gray-500 group-hover:text-brand-primary">
+            {copied ? '¡Copiado!' : 'Invitar'}
+          </h3>
+          <p className="font-sans text-[10px] text-gray-400 mt-1">
+            {copied ? 'Código guardado' : 'Copia el código para compartir'}
+          </p>
         </div>
       </div>
 

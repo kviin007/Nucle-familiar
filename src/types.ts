@@ -5,6 +5,7 @@ export interface Usuario {
   familia_id: string;
   racha_actual: number;
   puntos: number;
+  estado?: 'activo' | 'suspendido';
   configuracion_privacidad: {
     visible_familia_por_defecto: boolean;
   };

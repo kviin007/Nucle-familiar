@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions for authentication and administration checks
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if the authenticated user belongs to the specified family
+    function belongsToFamily(familiaId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.familia_id == familiaId;
+    }
+
+    // Families Collection Rules
+    match /familias/{familiaId} {
+      allow read: if isAuthenticated() && (belongsToFamily(familiaId) || isAdmin());
+      allow create: if isAuthenticated(); // Allows new family creation during onboarding
+      allow update, delete: if isAdmin() || (isAuthenticated() && belongsToFamily(familiaId));
+    }
+
+    // Users Collection Rules
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Tasks Collection Rules (tareas_diarias)
+    match /tareas_diarias/{taskId} {
+      allow read: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Goals Collection Rules (metas)
+    match /metas/{goalId} {
+      allow read: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Journal/Diario Collection Rules
+    match /diario/{entryId} {
+      allow read: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Daily Steps and Games Progress Collection Rules
+    match /pasos_diarios/{pasoId} {
+      allow read: if isAuthenticated() && (
+        belongsToFamily(resource.data.familia_id) || 
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        belongsToFamily(request.resource.data.familia_id) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -5,22 +5,20 @@ interface HoyScreenProps {
   usuarios: Usuario[];
   tareas: TareaDiaria[];
   metas: Meta[];
+  currentUser: any;
   onToggleTask: (taskId: string) => void;
   onAddTaskClick: () => void;
 }
 
-export default function HoyScreen({ usuarios, tareas, metas, onToggleTask, onAddTaskClick }: HoyScreenProps) {
-  // Current user is Maria for demonstration
-  const currentUser = usuarios.find(u => u.uid === 'user_maria') || usuarios[0];
-
+export default function HoyScreen({ usuarios, tareas, metas, currentUser, onToggleTask, onAddTaskClick }: HoyScreenProps) {
   // Calculate stats
   const familyTasks = tareas.filter(t => t.visible_familia);
   const totalFamilyTasks = familyTasks.length;
   const completedFamilyTasks = familyTasks.filter(t => t.estado === 'completada').length;
   const weeklyPercent = totalFamilyTasks > 0 ? Math.round((completedFamilyTasks / totalFamilyTasks) * 100) : 75;
 
-  // Filter tasks for Maria's personal view
-  const mariaTasks = tareas.filter(t => t.usuario_id === 'user_maria');
+  // Filter tasks for logged in user's personal view
+  const userTasks = tareas.filter(t => t.usuario_id === currentUser?.uid);
 
   return (
     <div className="space-y-6">
@@ -83,7 +81,7 @@ export default function HoyScreen({ usuarios, tareas, metas, onToggleTask, onAdd
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {mariaTasks.map((task) => {
+          {userTasks.map((task) => {
             const isCompleted = task.estado === 'completada';
             const isInProgress = task.estado === 'en_progreso';
             const isOverdue = task.estado === 'vencido';

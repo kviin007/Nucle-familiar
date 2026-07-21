@@ -11,14 +11,98 @@ import {
   Layers, 
   CheckCircle, 
   Play, 
-  RotateCcw 
+  RotateCcw,
+  Clock
 } from 'lucide-react';
+import { Usuario } from '../types';
+import { triviaQuestions } from '../data/triviaQuestions';
 
-export default function JuegosScreen() {
+interface JuegosScreenProps {
+  currentUser: Usuario | null;
+  usuarios: Usuario[];
+  onStateUpdate: () => void;
+}
+
+export default function JuegosScreen({ currentUser, usuarios, onStateUpdate }: JuegosScreenProps) {
   const [activeGame, setActiveGame] = useState<'trivia' | 'pasos' | 'memoria' | null>(null);
 
+  // High Scores / Progress state from DB
+  const [progress, setProgress] = useState<Record<string, { puntaje: number; mejor_tiempo?: number }>>({});
+  const [loadingProgress, setLoadingProgress] = useState(false);
+
   // Common Score and Reward state
-  const [gameScore, setGameScore] = useState(0);
+  const [pointsEarnedMessage, setPointsEarnedMessage] = useState<string | null>(null);
+
+  // Today Date helper
+  const getTodayDateString = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  // Fetch Game Progress (High Scores)
+  const fetchProgress = async () => {
+    if (!currentUser) return;
+    setLoadingProgress(true);
+    try {
+      const res = await fetch(`/api/games/progress?usuario_id=${currentUser.uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProgress(data);
+      }
+    } catch (err) {
+      console.error("Error fetching game progress:", err);
+    } finally {
+      setLoadingProgress(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProgress();
+  }, [currentUser]);
+
+  // Helper to save game progress on complete
+  const saveProgress = async (game: string, score: number, bestTime?: number) => {
+    if (!currentUser) return;
+    try {
+      await fetch('/api/games/progress/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usuario_id: currentUser.uid,
+          game,
+          score,
+          bestTime
+        }),
+      });
+      // Refresh high scores
+      await fetchProgress();
+    } catch (err) {
+      console.error("Error saving game progress:", err);
+    }
+  };
+
+  // Helper to award real Points to the current user
+  const awardPoints = async (pts: number) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch('/api/user/add-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          points: pts
+        }),
+      });
+      if (res.ok) {
+        onStateUpdate(); // Refresh the parent state/header points immediately
+        setPointsEarnedMessage(`¡Sumaste +${pts} puntos a tu perfil real! 🏆`);
+        setTimeout(() => {
+          setPointsEarnedMessage(null);
+        }, 5000);
+      }
+    } catch (err) {
+      console.error("Error awarding points:", err);
+    }
+  };
 
   // ==========================================
   // GAME 1: TRIVIA FAMILIAR STATE & DATA
@@ -28,39 +112,6 @@ export default function JuegosScreen() {
   const [triviaFeedback, setTriviaFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [triviaScore, setTriviaScore] = useState(0);
   const [triviaFinished, setTriviaFinished] = useState(false);
-
-  const triviaQuestions = [
-    {
-      question: "¿Cuál es el lema diario oficial de nuestro Núcleo Familiar?",
-      options: [
-        "¡Cada quien por su lado y que rinda el tiempo!",
-        "¡En equipo todo es posible!",
-        "La paciencia es una virtud pero la prisa ayuda."
-      ],
-      correctIndex: 1,
-      explanation: "¡Correcto! Nuestro lema familiar oficial es '¡En equipo todo es posible!', recordándonos que unidos superamos cualquier reto."
-    },
-    {
-      question: "¿Quién es reconocido por ser el 'Explorador' del hogar?",
-      options: [
-        "Mía García",
-        "Leo García",
-        "Mamá María"
-      ],
-      correctIndex: 1,
-      explanation: "¡Sí! Leo García ostenta el título de Explorador oficial gracias a su curiosidad y pasión por descubrir el mundo exterior."
-    },
-    {
-      question: "¿Cuál es la recompensa principal tras completar todas las metas semanales?",
-      options: [
-        "Puntos de motivación familiar (+50 Pts) y orgullo colectivo",
-        "Un boleto de avión para toda la familia",
-        "Dormir 24 horas seguidas el fin de semana"
-      ],
-      correctIndex: 0,
-      explanation: "¡Exacto! Lograr la meta semanal de tareas nos llena de orgullo y nos otorga valiosos puntos de motivación familiar."
-    }
-  ];
 
   const handleTriviaAnswer = (idx: number) => {
     if (triviaFeedback !== null) return;
@@ -81,6 +132,14 @@ export default function JuegosScreen() {
       setTriviaIndex(prev => prev + 1);
     } else {
       setTriviaFinished(true);
+      // Save trivia progress (High Score) and award points (10 points per correct answer)
+      const prevBest = progress['trivia']?.puntaje || 0;
+      if (triviaScore > prevBest) {
+        saveProgress('trivia', triviaScore);
+      }
+      if (triviaScore > 0) {
+        awardPoints(triviaScore);
+      }
     }
   };
 
@@ -93,47 +152,99 @@ export default function JuegosScreen() {
   };
 
   // ==========================================
-  // GAME 2: RETO DE PASOS STATE & DATA
+  // GAME 2: RETO DE PASOS STATE & DATA (Firestore Connected)
   // ==========================================
-  const [familySteps, setFamilySteps] = useState<Record<'maria' | 'leo' | 'mia' | 'papa', number>>({
-    maria: 8400,
-    leo: 12500,
-    mia: 6300,
-    papa: 9200
-  });
-  const [selectedMemberForSteps, setSelectedMemberForSteps] = useState<'maria' | 'leo' | 'mia' | 'papa'>('maria');
+  const [familySteps, setFamilySteps] = useState<Record<string, number>>({});
+  const [selectedMemberForSteps, setSelectedMemberForSteps] = useState<string>('');
   const [stepsInput, setStepsInput] = useState<string>('2000');
   const [stepsLoggedNotification, setStepsLoggedNotification] = useState<string | null>(null);
+  const [loadingSteps, setLoadingSteps] = useState(false);
 
-  const stepsGoal = 50000;
-  const currentTotalSteps = (Object.values(familySteps) as number[]).reduce((a, b) => a + b, 0);
+  // Fetch family steps for today
+  const fetchFamilySteps = async () => {
+    if (!currentUser?.familia_id) return;
+    setLoadingSteps(true);
+    try {
+      const today = getTodayDateString();
+      const res = await fetch(`/api/steps?familia_id=${currentUser.familia_id}&fecha=${today}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFamilySteps(data);
+      }
+    } catch (err) {
+      console.error("Error fetching steps:", err);
+    } finally {
+      setLoadingSteps(false);
+    }
+  };
+
+  // Get family members to map IDs to Names & Avatars
+  const familyMembers = usuarios.filter(u => u.familia_id === currentUser?.familia_id);
+
+  useEffect(() => {
+    if (activeGame === 'pasos') {
+      fetchFamilySteps();
+      if (familyMembers.length > 0) {
+        setSelectedMemberForSteps(familyMembers[0].uid);
+      }
+    }
+  }, [activeGame, currentUser]);
+
+  const stepsGoal = 30000; // Shared daily family steps goal
+  const currentTotalSteps: number = Object.keys(familySteps).reduce((acc, key) => {
+    return acc + (Number(familySteps[key]) || 0);
+  }, 0);
   const stepsPercentage = Math.min(100, Math.round((currentTotalSteps / stepsGoal) * 100));
 
-  const handleAddSteps = (e: React.FormEvent) => {
+  const handleAddSteps = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = parseInt(stepsInput);
-    if (isNaN(parsed) || parsed <= 0) return;
+    if (isNaN(parsed) || parsed <= 0 || !selectedMemberForSteps) return;
 
-    setFamilySteps(prev => ({
-      ...prev,
-      [selectedMemberForSteps]: prev[selectedMemberForSteps] + parsed
-    }));
+    try {
+      const today = getTodayDateString();
+      const currentMemberSteps = familySteps[selectedMemberForSteps] || 0;
+      const newStepsValue = currentMemberSteps + parsed;
 
-    const memberName = selectedMemberForSteps === 'maria' ? 'Mamá María' 
-                     : selectedMemberForSteps === 'leo' ? 'Leo' 
-                     : selectedMemberForSteps === 'mia' ? 'Mía' 
-                     : 'Papá Hugo';
+      // Log/update steps in Firestore
+      const res = await fetch('/api/steps/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usuario_id: selectedMemberForSteps,
+          pasos: newStepsValue,
+          fecha: today
+        })
+      });
 
-    setStepsLoggedNotification(`¡Registrado! Se sumaron ${parsed.toLocaleString()} pasos a ${memberName}.`);
-    setStepsInput('2000');
+      if (res.ok) {
+        const walker = familyMembers.find(m => m.uid === selectedMemberForSteps);
+        const name = walker?.nombre || 'Miembro de Familia';
+        
+        setStepsLoggedNotification(`¡Registrado! Se sumaron ${parsed.toLocaleString()} pasos a ${name}.`);
+        setStepsInput('2000');
+        
+        // Refresh local step counts
+        await fetchFamilySteps();
 
-    setTimeout(() => {
-      setStepsLoggedNotification(null);
-    }, 4000);
+        // Save progress high score for steps (total cumulative logged steps)
+        const currentBest = progress['pasos']?.puntaje || 0;
+        saveProgress('pasos', Math.max(currentBest, currentTotalSteps + parsed));
+
+        // Award motivation points to the active logging user (+20 pts flat)
+        await awardPoints(20);
+
+        setTimeout(() => {
+          setStepsLoggedNotification(null);
+        }, 4000);
+      }
+    } catch (err) {
+      console.error("Error adding steps:", err);
+    }
   };
 
   // ==========================================
-  // GAME 3: MEMORY MATCH (ROMPECABEZAS) STATE
+  // GAME 3: MEMORY MATCH STATE & TIMER
   // ==========================================
   const initialCards = [
     { id: 1, name: 'Mamá', icon: '👩‍🍳', matched: false },
@@ -154,6 +265,7 @@ export default function JuegosScreen() {
   const [selectedCards, setSelectedCards] = useState<number[]>([]);
   const [matchesCount, setMatchesCount] = useState(0);
   const [memFinished, setMemFinished] = useState(false);
+  const [memSeconds, setMemSeconds] = useState(0);
 
   const shuffleCards = () => {
     const shuffled = [...initialCards].sort(() => Math.random() - 0.5);
@@ -161,6 +273,7 @@ export default function JuegosScreen() {
     setSelectedCards([]);
     setMatchesCount(0);
     setMemFinished(false);
+    setMemSeconds(0);
   };
 
   useEffect(() => {
@@ -168,6 +281,19 @@ export default function JuegosScreen() {
       shuffleCards();
     }
   }, [activeGame]);
+
+  // Memory game stopwatch/timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (activeGame === 'memoria' && !memFinished) {
+      interval = setInterval(() => {
+        setMemSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeGame, memFinished]);
 
   const handleCardClick = (index: number) => {
     if (selectedCards.length === 2 || cards[index].matched || selectedCards.includes(index)) return;
@@ -192,6 +318,13 @@ export default function JuegosScreen() {
             const next = prev + 1;
             if (next === 6) {
               setMemFinished(true);
+              // Save memory game progress (High score & Best time in seconds)
+              const prevBestTime = progress['memoria']?.mejor_tiempo || 9999;
+              const isNewBestTime = memSeconds < prevBestTime;
+              saveProgress('memoria', (progress['memoria']?.puntaje || 0) + 1, isNewBestTime ? memSeconds : prevBestTime);
+              
+              // Award real points (+50 pts) for completing the match game!
+              awardPoints(50);
             }
             return next;
           });
@@ -204,6 +337,12 @@ export default function JuegosScreen() {
         }, 1000);
       }
     }
+  };
+
+  const formatTimer = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -240,12 +379,27 @@ export default function JuegosScreen() {
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 text-left self-start md:self-auto">
             <span className="text-xl">🏆</span>
             <div>
-              <span className="text-[10px] text-amber-800 font-black uppercase tracking-wider block">Racha Familiar</span>
-              <span className="text-xs font-bold text-amber-950">¡7 Días Jugando Juntos!</span>
+              <span className="text-[10px] text-amber-800 font-black uppercase tracking-wider block">Tu Puntuación Real</span>
+              <span className="text-xs font-bold text-amber-950">{currentUser?.puntos || 0} Pts de Motivación</span>
             </div>
           </div>
         )}
       </div>
+
+      {/* Points Reward Notification Float */}
+      <AnimatePresence>
+        {pointsEarnedMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="bg-emerald-600 border border-emerald-500 text-white px-6 py-4 rounded-2xl shadow-xl font-bold text-sm text-center flex items-center justify-center gap-2 max-w-md mx-auto"
+          >
+            <Sparkles className="animate-pulse" size={18} />
+            {pointsEarnedMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence mode="wait">
         {/* GAME SELECTION MENU */}
@@ -267,12 +421,19 @@ export default function JuegosScreen() {
                 />
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/70 to-transparent z-10" />
-              <div className="z-20 p-4 flex justify-end">
+              
+              <div className="z-20 p-4 flex justify-between items-start">
+                {progress['trivia'] ? (
+                  <span className="px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    ★ Récord: {progress['trivia'].puntaje} Pts
+                  </span>
+                ) : <div />}
                 <span className="px-3 py-1 rounded-full bg-brand-light text-brand-dark font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider flex items-center gap-1">
                   <HelpCircle size={12} />
-                  2-6 Jugadores
+                  Trivia
                 </span>
               </div>
+
               <div className="z-20 p-5 mt-auto text-left space-y-3">
                 <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Trivia Familiar</h3>
                 <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
@@ -302,16 +463,23 @@ export default function JuegosScreen() {
                 />
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/70 to-transparent z-10" />
-              <div className="z-20 p-4 flex justify-end">
+              
+              <div className="z-20 p-4 flex justify-between items-start">
+                {progress['pasos'] ? (
+                  <span className="px-2.5 py-1 rounded-full bg-pink-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    👣 Record: {progress['pasos'].puntaje.toLocaleString()} pasos
+                  </span>
+                ) : <div />}
                 <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider flex items-center gap-1">
                   <Footprints size={12} />
-                  Colaborativo
+                  Pasos
                 </span>
               </div>
+
               <div className="z-20 p-5 mt-auto text-left space-y-3">
                 <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Reto de Pasos</h3>
                 <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
-                  Sincronicen sus podómetros y acumulen pasos juntos esta semana. ¡A moverse!
+                  Sincronicen sus podómetros y acumulen pasos juntos hoy. ¡A moverse!
                 </p>
                 <button 
                   onClick={() => setActiveGame('pasos')}
@@ -334,12 +502,19 @@ export default function JuegosScreen() {
                 />
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/70 to-transparent z-10" />
-              <div className="z-20 p-4 flex justify-end">
+              
+              <div className="z-20 p-4 flex justify-between items-start">
+                {progress['memoria']?.mejor_tiempo ? (
+                  <span className="px-2.5 py-1 rounded-full bg-indigo-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    ⏱️ Mejor Tiempo: {formatTimer(progress['memoria'].mejor_tiempo)}
+                  </span>
+                ) : <div />}
                 <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider flex items-center gap-1">
                   <Layers size={12} />
-                  Ejercita Mente
+                  Memoria
                 </span>
               </div>
+
               <div className="z-20 p-5 mt-auto text-left space-y-3">
                 <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Memoria del Núcleo</h3>
                 <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
@@ -465,16 +640,16 @@ export default function JuegosScreen() {
                 <div className="space-y-2">
                   <h3 className="text-2xl font-black text-gray-900">¡Reto Completado!</h3>
                   <p className="text-sm text-gray-500 max-w-sm mx-auto">
-                    Has respondido todas las preguntas sobre nuestro núcleo familiar. ¡Buen trabajo!
+                    Has respondido las preguntas sobre nuestro núcleo familiar. ¡Puntos sumados a tu perfil!
                   </p>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 max-w-xs mx-auto flex justify-between items-center text-left">
                   <div>
                     <span className="text-xs text-gray-400 block font-bold">Puntaje logrado</span>
-                    <span className="text-base font-black text-gray-900">Sabiduría Familiar</span>
+                    <span className="text-base font-black text-gray-900">Puntos Reales Sumados</span>
                   </div>
-                  <span className="font-mono text-xl font-black text-[#6366F1]">{triviaScore} / 30 Pts</span>
+                  <span className="font-mono text-xl font-black text-[#6366F1]">{triviaScore} / {triviaQuestions.length * 10} Pts</span>
                 </div>
 
                 <div className="flex gap-3 justify-center">
@@ -488,7 +663,7 @@ export default function JuegosScreen() {
                     onClick={() => setActiveGame(null)}
                     className="px-6 py-3 rounded-full bg-brand-primary hover:bg-brand-dark text-white font-bold text-xs transition-all shadow-md active:scale-95"
                   >
-                    Salir al Menu
+                    Salir al Menú
                   </button>
                 </div>
               </div>
@@ -510,10 +685,10 @@ export default function JuegosScreen() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-sans text-base font-extrabold text-gray-900 uppercase tracking-wide">
-                      Meta Colectiva Semanal
+                      Meta Colectiva Diaria
                     </h3>
                     <p className="font-sans text-xs text-gray-500 mt-1">
-                      Sumamos todos nuestros pasos cotidianos para promover la vida activa.
+                      Sincronizado en tiempo real con Firestore para todo el Núcleo Familiar.
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-wider">
@@ -521,52 +696,67 @@ export default function JuegosScreen() {
                   </span>
                 </div>
 
-                {/* Progress bar and details */}
-                <div className="mt-6 space-y-3">
-                  <div className="flex justify-between items-end text-xs font-bold text-gray-600">
-                    <span>Avance Acumulado</span>
-                    <span className="text-brand-primary font-black text-sm">
-                      {currentTotalSteps.toLocaleString()} / {stepsGoal.toLocaleString()} pasos
-                    </span>
+                {loadingSteps ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-2">
+                    <div className="w-6 h-6 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Actualizando pasos...</span>
                   </div>
-                  
-                  {/* Visual full bar */}
-                  <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-150/50">
-                    <div 
-                      className="h-full bg-gradient-to-r from-rose-400 via-pink-500 to-[#6366F1] rounded-full transition-all duration-700"
-                      style={{ width: `${stepsPercentage}%` }}
-                    />
-                  </div>
+                ) : (
+                  <div className="mt-6 space-y-3">
+                    <div className="flex justify-between items-end text-xs font-bold text-gray-600">
+                      <span>Avance Acumulado de la Familia</span>
+                      <span className="text-brand-primary font-black text-sm">
+                        {currentTotalSteps.toLocaleString()} / {stepsGoal.toLocaleString()} pasos
+                      </span>
+                    </div>
+                    
+                    {/* Visual full bar */}
+                    <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-150/50">
+                      <div 
+                        className="h-full bg-gradient-to-r from-rose-400 via-pink-500 to-[#6366F1] rounded-full transition-all duration-700"
+                        style={{ width: `${stepsPercentage}%` }}
+                      />
+                    </div>
 
-                  <div className="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    <span>Falta {(stepsGoal - Math.min(stepsGoal, currentTotalSteps)).toLocaleString()} pasos</span>
-                    <span className="text-emerald-500">{stepsPercentage}% completado</span>
+                    <div className="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span>Falta {Math.max(0, stepsGoal - currentTotalSteps).toLocaleString()} pasos</span>
+                      <span className="text-emerald-500">{stepsPercentage}% completado</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Members Breakdown */}
               <div className="space-y-3 mt-4">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                  Desglose por Integrante
+                  Desglose por Integrante Autenticado
                 </h4>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { id: 'maria', name: 'Mamá María', value: familySteps.maria, color: 'bg-emerald-500' },
-                    { id: 'leo', name: 'Leo García', value: familySteps.leo, color: 'bg-rose-500' },
-                    { id: 'mia', name: 'Mía García', value: familySteps.mia, color: 'bg-amber-500' },
-                    { id: 'papa', name: 'Papá Hugo', value: familySteps.papa, color: 'bg-[#6366F1]' }
-                  ].map(m => (
-                    <div key={m.id} className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full ${m.color}`} />
-                        <span className="text-xs font-bold text-gray-700">{m.name}</span>
-                      </div>
-                      <span className="font-mono text-xs font-black text-gray-900">{m.value.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
+                {familyMembers.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No hay miembros registrados en esta familia.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {familyMembers.map((m, index) => {
+                      const colors = ['bg-emerald-500', 'bg-rose-500', 'bg-amber-500', 'bg-indigo-500', 'bg-purple-500'];
+                      const color = colors[index % colors.length];
+                      const steps = familySteps[m.uid] || 0;
+                      return (
+                        <div key={m.uid} className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <img 
+                              src={m.avatar_url} 
+                              alt={m.nombre} 
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="text-xs font-bold text-gray-700 truncate max-w-[80px]">{m.nombre}</span>
+                          </div>
+                          <span className="font-mono text-xs font-black text-gray-900">{steps.toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -576,7 +766,7 @@ export default function JuegosScreen() {
                 Registrar Caminata
               </h3>
               <p className="font-sans text-xs text-gray-500 leading-relaxed">
-                ¿Hiciste ejercicio o saliste a caminar hoy? Registra tus nuevos pasos en el podómetro familiar.
+                ¿Hiciste ejercicio o saliste a caminar hoy? Registra tus nuevos pasos en el podómetro familiar de Firestore.
               </p>
 
               <form onSubmit={handleAddSteps} className="space-y-4 pt-2">
@@ -586,13 +776,14 @@ export default function JuegosScreen() {
                   </label>
                   <select
                     value={selectedMemberForSteps}
-                    onChange={(e) => setSelectedMemberForSteps(e.target.value as any)}
+                    onChange={(e) => setSelectedMemberForSteps(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-gray-700 focus:ring-2 focus:ring-brand-primary outline-none"
+                    required
                   >
-                    <option value="maria">Mamá María</option>
-                    <option value="leo">Leo García (Explorador)</option>
-                    <option value="mia">Mía García (Estudiante)</option>
-                    <option value="papa">Papá Hugo (Guía)</option>
+                    <option value="" disabled>Selecciona un miembro...</option>
+                    {familyMembers.map(m => (
+                      <option key={m.uid} value={m.uid}>{m.nombre}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -613,10 +804,11 @@ export default function JuegosScreen() {
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-brand-primary hover:bg-brand-dark text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+                  disabled={!selectedMemberForSteps}
+                  className="w-full py-3 rounded-xl bg-brand-primary hover:bg-brand-dark disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                 >
                   <Footprints size={14} />
-                  Sincronizar Pasos
+                  Sincronizar Pasos Real
                 </button>
               </form>
 
@@ -644,8 +836,9 @@ export default function JuegosScreen() {
             className="w-full max-w-2xl mx-auto bg-white rounded-3xl border border-indigo-50/60 shadow-2xl p-6 md:p-8 space-y-6"
           >
             <div className="flex justify-between items-center border-b border-indigo-50 pb-4">
-              <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-brand-primary font-bold text-xs uppercase">
-                Encuentra las parejas
+              <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-brand-primary font-bold text-xs uppercase flex items-center gap-1.5">
+                <Clock size={14} className="animate-pulse" />
+                Tiempo: {formatTimer(memSeconds)}
               </span>
               <button 
                 onClick={shuffleCards}
@@ -665,14 +858,14 @@ export default function JuegosScreen() {
                     <button
                       key={card.id}
                       onClick={() => handleCardClick(idx)}
-                      className={`h-24 sm:h-28 rounded-2xl border-2 flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden ${
+                      className={`h-24 sm:h-28 rounded-2xl border-2 flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden cursor-pointer ${
                         isFlipped 
                           ? 'border-brand-primary/40 bg-brand-light/30 text-slate-800 shadow-inner' 
                           : 'border-slate-150 bg-gradient-to-tr from-indigo-50 to-white hover:border-[#6366F1] shadow-sm'
                       }`}
                     >
                       {isFlipped ? (
-                        <div className="flex flex-col items-center gap-1.5 animate-fade-in">
+                        <div className="flex flex-col items-center gap-1.5">
                           <span className="text-3xl">{card.icon}</span>
                           <span className="text-[10px] font-black uppercase text-brand-dark tracking-wider">{card.name}</span>
                         </div>
@@ -693,7 +886,7 @@ export default function JuegosScreen() {
                 <div className="space-y-2">
                   <h3 className="text-2xl font-black text-gray-900">¡Memoria Superada!</h3>
                   <p className="text-sm text-gray-500 max-w-sm mx-auto">
-                    Has sincronizado todas las tarjetas simbólicas del Núcleo Familiar con éxito.
+                    Has sincronizado todas las tarjetas simbólicas del Núcleo Familiar con éxito en <strong>{formatTimer(memSeconds)}</strong>.
                   </p>
                 </div>
 

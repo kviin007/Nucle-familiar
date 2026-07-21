@@ -1,168 +1,9 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia } from "./src/types";
-
-// In-Memory Database State representing the initial mockups
-const initialUsuarios: Usuario[] = [
-  {
-    uid: "user_maria",
-    nombre: "Maria",
-    avatar_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuDOMJAP3t5bp1oJYXlFGQBDX_NAoqRTgAJ8zftLuakcfkO0VctxmpjH4gTDBS6EocoQN4hhf3tYKnGCgfuTHbMuHl8WasVFEnyrEcTRrK8p1Cjb0EHyT2mYTxWiENN1obGn22tkzCznaRmQ6-mytpjFN94bMgci4Ex74C2E086_0Tpu_cEW9AN_6d0HZDuHPLGYOJlytMfcnBYVKKaAGdcTObLbJkgP7Zi6FuUWC9HIwMdnL0QT33S1gmIQA8hBwDdLm_b4fr8BGxM",
-    familia_id: "fam_garcia",
-    racha_actual: 12,
-    puntos: 850,
-    configuracion_privacidad: { visible_familia_por_defecto: true }
-  },
-  {
-    uid: "user_leo",
-    nombre: "Leo",
-    avatar_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuBTlGZ5vfYi3NLy08_hbdozUnHkrte-6jre_i9zAF7nigsszLMwB3ta-dMgnBF3XNGBmZlzeufy3xs7fwYf8X3LFioX_qCjo32ft2t0ZmeKZ0wcb6mXRQWmMqhWrYIgvQ5DvNA-9VS6AjpbunbATJCD-HCQ3qFlOaCXSYOM9AdhDTdjQbLL5wIox2EY6rbfWa1i-p5LPw1AGl7E281c2qv663Xbx9uYbK9PC_yv6OKOctc_pX0VohRxf8wGb6bP1sBgYj3TtZw3rmg",
-    familia_id: "fam_garcia",
-    racha_actual: 14,
-    puntos: 1240,
-    configuracion_privacidad: { visible_familia_por_defecto: true }
-  },
-  {
-    uid: "user_mia",
-    nombre: "Mia",
-    avatar_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuD8Ji9YYut7gh-sIeqkg10HmPRgPxba7aLM99Whx4Tu8WoSBu8Hy1bKRVUtp--6UgDh5Gz9Y25p-qpXSE3c5jJb-EZL8E8rxG6BqjCQSMtEssbJvSeXsOaHcXWGW96R0Nz1_MlUYJKukbbTd80cU5i9HRIYa9ZvfVM6TCXtpvDOAWSP3sAdb9Q-X4wKoum-svvbV3Gx8Yi4zq9bto03Czee3Te-bnV6hf16knEiii2Z2ePNMj6_WX6Gkm4kGTa2B81H386g7Q0uH60",
-    familia_id: "fam_garcia",
-    racha_actual: 5,
-    puntos: 650,
-    configuracion_privacidad: { visible_familia_por_defecto: true }
-  },
-  {
-    uid: "user_dad",
-    nombre: "Dad",
-    avatar_url: "https://lh3.googleusercontent.com/aida-public/AB6AXuBfu5FuLdnUtbMomHC98DEJ0HC6K0yFKAPkvNHOKudotUCYT0aGjE1VixmB4i1Jl2V4v4PQLkGKI-tEJcL7OMJklGyo-F1C13fDWX_LsuPUeXyQ3yt-lTs_qDF4EnzqEICDlEeFNlmz4zJo5JGmNpJSnYKZ8cSPicM75t4m-8xQvuP7uP1c9rccmMZlRwm4TF9OVaZaywRJN6QIsgxcXLQuSMsViCFxndzub86oeXyvFD4N2C5lzqrqNZRF-5b_RsGT96Sa7M5iQw4",
-    familia_id: "fam_garcia",
-    racha_actual: 2,
-    puntos: 340,
-    configuracion_privacidad: { visible_familia_por_defecto: true }
-  }
-];
-
-const initialMetas: Meta[] = [
-  {
-    meta_id: "meta_1",
-    usuario_id: "user_leo",
-    titulo: "Hacer ejercicio",
-    categoria: "Salud",
-    fecha_limite: "2026-12-31",
-    porcentaje_semanal: 75,
-    visible_familia: true
-  },
-  {
-    meta_id: "meta_2",
-    usuario_id: "user_mia",
-    titulo: "Leer 20 mins",
-    categoria: "Estudio",
-    fecha_limite: "2026-12-31",
-    porcentaje_semanal: 50,
-    visible_familia: true
-  },
-  {
-    meta_id: "meta_3",
-    usuario_id: "user_dad",
-    titulo: "Ahorro Viaje",
-    categoria: "Finanzas",
-    fecha_limite: "2026-10-15",
-    porcentaje_semanal: 20,
-    visible_familia: true
-  }
-];
-
-const initialTareas: TareaDiaria[] = [
-  {
-    tarea_id: "tarea_1",
-    usuario_id: "user_maria",
-    meta_id: "meta_1",
-    titulo: "Desayuno juntos",
-    hora_programada: "07:30",
-    tiempo_estimado_min: 30,
-    estado: "completada",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  },
-  {
-    tarea_id: "tarea_2",
-    usuario_id: "user_maria",
-    titulo: "Ayudar con la tarea",
-    hora_programada: "16:00",
-    tiempo_estimado_min: 45,
-    estado: "en_progreso",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  },
-  {
-    tarea_id: "tarea_3",
-    usuario_id: "user_maria",
-    titulo: "Cena familiar",
-    hora_programada: "19:00",
-    tiempo_estimado_min: 60,
-    estado: "pendiente",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  },
-  {
-    tarea_id: "tarea_4",
-    usuario_id: "user_leo",
-    titulo: "Llevar a Leo al colegio",
-    hora_programada: "08:30",
-    tiempo_estimado_min: 20,
-    estado: "vencido",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  },
-  {
-    tarea_id: "tarea_5",
-    usuario_id: "user_maria",
-    titulo: "Preparar desayunos",
-    hora_programada: "08:00",
-    tiempo_estimado_min: 25,
-    estado: "pendiente",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  },
-  {
-    tarea_id: "tarea_6",
-    usuario_id: "user_mia",
-    titulo: "Comprar víveres",
-    hora_programada: "14:00",
-    tiempo_estimado_min: 30,
-    estado: "completada",
-    ultima_actualizacion: new Date().toISOString(),
-    visible_familia: true
-  }
-];
-
-const initialDiario: DiarioEntrada[] = [
-  {
-    entrada_id: "entrada_1",
-    usuario_id: "user_maria",
-    texto: "Un día increíble compartiendo un picnic con la familia. Los niños se divirtieron mucho.",
-    emocion: "Great",
-    visible_familia: true,
-    fecha: "2026-07-19"
-  },
-  {
-    entrada_id: "entrada_2",
-    usuario_id: "user_leo",
-    texto: "Hoy jugamos trivia y gané la medalla de explorer. ¡Fue super divertido!",
-    emocion: "Good",
-    visible_familia: true,
-    fecha: "2026-07-18"
-  }
-];
-
-// Server state managers
-let database = {
-  usuarios: [...initialUsuarios],
-  metas: [...initialMetas],
-  tareas: [...initialTareas],
-  diario: [...initialDiario]
-};
+import { dbService } from "./server_db";
+import { getAuth } from "firebase-admin/auth";
+import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
@@ -170,166 +11,490 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Route: Reset Database State
-  app.post("/api/reset", (req, res) => {
-    database = {
-      usuarios: [...initialUsuarios],
-      metas: [...initialMetas],
-      tareas: [...initialTareas],
-      diario: [...initialDiario]
-    };
-    res.json({ success: true, message: "Base de datos restaurada correctamente." });
+  // Middleware to check admin claim
+  async function adminAuthMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+    if (!dbService.getIsFirestoreEnabled()) {
+      return next(); // Bypass check if Firestore is not active (simulated mode)
+    }
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Autorización de administrador requerida." });
+    }
+
+    const idToken = authHeader.split("Bearer ")[1];
+    try {
+      const decodedToken = await getAuth().verifyIdToken(idToken);
+      if (decodedToken.admin) {
+        (req as any).user = decodedToken;
+        next();
+      } else {
+        res.status(403).json({ error: "Acceso denegado. Se requiere rol de administrador." });
+      }
+    } catch (err) {
+      res.status(401).json({ error: "Token de autorización inválido o expirado." });
+    }
+  }
+
+  // API Route: Get Firebase client configuration
+  app.get("/api/firebase-config", (req, res) => {
+    res.json({
+      apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || "",
+      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+      appId: process.env.VITE_FIREBASE_APP_ID || ""
+    });
+  });
+
+  // API Route: Email & Password sign-in / authentication simulation
+  app.post("/api/auth/login", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email y contraseña son obligatorios." });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // If it's Kevin (Admin)
+    if (normalizedEmail === "kevin@familia.com" && password === "123456") {
+      return res.json({
+        success: true,
+        user: {
+          uid: "kevin-admin-uid",
+          nombre: "Kevin (Admin)",
+          email: "kevin@familia.com",
+          avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop",
+          familia_id: "fam_kevin_admin",
+          role: "admin",
+          puntos: 150,
+          racha_actual: 5
+        },
+        idToken: "simulated-admin-token-kevin"
+      });
+    }
+
+    // Default simulated fallback login
+    try {
+      const state = await dbService.getState();
+      const existingUser = state.usuarios.find(
+        (u: any) => u.email?.toLowerCase() === normalizedEmail || u.uid === `user-${normalizedEmail.replace(/[@.]/g, "-")}`
+      );
+
+      if (existingUser) {
+        return res.json({
+          success: true,
+          user: {
+            uid: existingUser.uid,
+            nombre: existingUser.nombre,
+            email: normalizedEmail,
+            avatar_url: existingUser.avatar_url,
+            familia_id: existingUser.familia_id,
+            role: (existingUser as any).role || "member",
+            puntos: existingUser.puntos || 0,
+            racha_actual: existingUser.racha_actual || 0
+          },
+          idToken: `simulated-token-${existingUser.uid}`
+        });
+      } else {
+        // Register new user locally
+        const newUid = `user-${normalizedEmail.replace(/[@.]/g, "-")}`;
+        const newProfileRes = await dbService.updateUserProfile(
+          newUid,
+          normalizedEmail.split('@')[0],
+          "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
+          "member",
+          ""
+        );
+        const newProfile = newProfileRes.updatedUser;
+
+        return res.json({
+          success: true,
+          user: {
+            uid: newUid,
+            nombre: newProfile?.nombre || normalizedEmail.split('@')[0],
+            email: normalizedEmail,
+            avatar_url: newProfile?.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
+            familia_id: "",
+            role: "member",
+            puntos: 0,
+            racha_actual: 0
+          },
+          idToken: `simulated-token-${newUid}`
+        });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al autenticar." });
+    }
+  });
+
+  // API Route: Reset Database State (Protected by admin claims)
+  app.post("/api/reset", adminAuthMiddleware, async (req, res) => {
+    try {
+      const result = await dbService.resetState();
+      res.json({ success: true, message: "Base de datos restaurada correctamente." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al restaurar la base de datos." });
+    }
+  });
+
+  // API Route: Suspend User (Protected by admin claims)
+  app.post("/api/admin/suspend-user", adminAuthMiddleware, async (req, res) => {
+    const { uid, suspend } = req.body;
+    if (!uid || suspend === undefined) {
+      return res.status(400).json({ error: "UID y estado suspend son obligatorios." });
+    }
+    try {
+      const result = await dbService.suspendUser(uid, suspend);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al suspender al usuario." });
+    }
+  });
+
+  // API Route: Delete User (Protected by admin claims)
+  app.post("/api/admin/delete-user", adminAuthMiddleware, async (req, res) => {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ error: "UID es obligatorio." });
+    }
+    try {
+      const result = await dbService.deleteUser(uid);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al eliminar al usuario." });
+    }
   });
 
   // API Route: Get State
-  app.get("/api/state", (req, res) => {
-    res.json(database);
+  app.get("/api/state", async (req, res) => {
+    try {
+      const state = await dbService.getState();
+      res.json(state);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al obtener el estado." });
+    }
   });
 
   // API Route: Toggle Task State
-  app.post("/api/tasks/toggle", (req, res) => {
+  app.post("/api/tasks/toggle", async (req, res) => {
     const { tarea_id } = req.body;
-    const taskIndex = database.tareas.findIndex(t => t.tarea_id === tarea_id);
-    if (taskIndex !== -1) {
-      const current = database.tareas[taskIndex].estado;
-      let nextState: 'pendiente' | 'en_progreso' | 'completada' | 'vencido' = 'pendiente';
-      if (current === 'pendiente') {
-        nextState = 'en_progreso';
-      } else if (current === 'en_progreso') {
-        nextState = 'completada';
-      } else if (current === 'completada') {
-        nextState = 'pendiente';
-      } else {
-        nextState = 'pendiente'; // default reset from overdue
-      }
-      database.tareas[taskIndex].estado = nextState;
-      database.tareas[taskIndex].ultima_actualizacion = new Date().toISOString();
-
-      // Recalculate stats for the owner
-      const userId = database.tareas[taskIndex].usuario_id;
-      const userTasks = database.tareas.filter(t => t.usuario_id === userId);
-      const completed = userTasks.filter(t => t.estado === 'completada').length;
-      const total = userTasks.length;
-      const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-      // Give points when a task is completed!
-      if (nextState === 'completada') {
-        const userIndex = database.usuarios.findIndex(u => u.uid === userId);
-        if (userIndex !== -1) {
-          database.usuarios[userIndex].puntos += 50; // Add 50 points
-        }
-      }
-
-      res.json({ success: true, updatedTask: database.tareas[taskIndex], progressPercent });
-    } else {
-      res.status(404).json({ error: "Tarea no encontrada." });
+    if (!tarea_id) {
+      return res.status(400).json({ error: "ID de tarea es obligatorio." });
+    }
+    try {
+      const result = await dbService.toggleTask(tarea_id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(404).json({ error: e.message || "Tarea no encontrada." });
     }
   });
 
   // API Route: Create Task
-  app.post("/api/tasks/create", (req, res) => {
+  app.post("/api/tasks/create", async (req, res) => {
     const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id } = req.body;
     if (!titulo || !usuario_id) {
       return res.status(400).json({ error: "Título y destinatario son obligatorios." });
     }
-
-    const newTask: TareaDiaria = {
-      tarea_id: `tarea_${Date.now()}`,
-      usuario_id,
-      meta_id,
-      titulo,
-      hora_programada: hora_programada || "12:00",
-      tiempo_estimado_min: Number(tiempo_estimado_min) || 30,
-      estado: "pendiente",
-      ultima_actualizacion: new Date().toISOString(),
-      visible_familia: visible_familia !== false
-    };
-
-    database.tareas.push(newTask);
-    res.json({ success: true, newTask });
+    try {
+      const result = await dbService.createTask({
+        titulo,
+        usuario_id,
+        hora_programada,
+        tiempo_estimado_min,
+        visible_familia,
+        meta_id
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al crear la tarea." });
+    }
   });
 
   // API Route: Create Goal
-  app.post("/api/goals/create", (req, res) => {
-    const { titulo, categoria, usuario_id } = req.body;
+  app.post("/api/goals/create", async (req, res) => {
+    const { titulo, categoria, usuario_id, visible_familia, fecha_limite } = req.body;
     if (!titulo || !categoria || !usuario_id) {
       return res.status(400).json({ error: "Título, categoría y usuario son obligatorios." });
     }
-
-    const newGoal: Meta = {
-      meta_id: `meta_${Date.now()}`,
-      usuario_id,
-      titulo,
-      categoria,
-      fecha_limite: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0], // 30 days from now
-      porcentaje_semanal: 0,
-      visible_familia: true
-    };
-
-    database.metas.push(newGoal);
-    res.json({ success: true, newGoal });
+    try {
+      const result = await dbService.createGoal({
+        titulo,
+        categoria,
+        usuario_id,
+        visible_familia,
+        fecha_limite
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al crear la meta." });
+    }
   });
 
   // API Route: Save Journal Entry
-  app.post("/api/journal/create", (req, res) => {
+  app.post("/api/journal/create", async (req, res) => {
     const { texto, emocion, visible_familia, usuario_id } = req.body;
     if (!texto || !emocion || !usuario_id) {
       return res.status(400).json({ error: "Texto, emoción y usuario son obligatorios." });
     }
-
-    const newEntry: DiarioEntrada = {
-      entrada_id: `entrada_${Date.now()}`,
-      usuario_id,
-      texto,
-      emocion,
-      visible_familia: visible_familia !== false,
-      fecha: new Date().toISOString().split('T')[0]
-    };
-
-    database.diario.unshift(newEntry); // Prepend to show first
-    res.json({ success: true, newEntry });
+    try {
+      const result = await dbService.createJournalEntry({
+        texto,
+        emocion,
+        visible_familia,
+        usuario_id
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al guardar en el diario." });
+    }
   });
 
-  // API Route: Update User Profile
-  app.post("/api/user/update", (req, res) => {
-    const { uid, nombre, avatar_url } = req.body;
+  // API Route: Update User Profile / Register New User
+  app.post("/api/user/update", async (req, res) => {
+    const { uid, nombre, avatar_url, role, familia_id } = req.body;
     if (!uid) {
       return res.status(400).json({ error: "UID de usuario es obligatorio." });
     }
-    const userIndex = database.usuarios.findIndex(u => u.uid === uid);
-    if (userIndex !== -1) {
-      if (nombre !== undefined) database.usuarios[userIndex].nombre = nombre;
-      if (avatar_url !== undefined) database.usuarios[userIndex].avatar_url = avatar_url;
-      res.json({ success: true, updatedUser: database.usuarios[userIndex] });
-    } else {
-      res.status(404).json({ error: "Usuario no encontrado." });
+    try {
+      const result = await dbService.updateUserProfile(uid, nombre, avatar_url, role, familia_id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al actualizar el perfil." });
     }
   });
 
-  // Scheduled check simulation endpoint: emulates the cloud function to mark overdue tasks
-  app.post("/api/cron/check-overdue", (req, res) => {
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    let updatedCount = 0;
-
-    database.tareas.forEach((task, index) => {
-      if (task.estado === 'pendiente' || task.estado === 'en_progreso') {
-        const [hora, min] = task.hora_programada.split(':').map(Number);
-        const taskMinutes = hora * 60 + min;
-        const estimatedEndMinutes = taskMinutes + task.tiempo_estimado_min;
-
-        if (currentMinutes > estimatedEndMinutes) {
-          database.tareas[index].estado = 'vencido';
-          database.tareas[index].ultima_actualizacion = new Date().toISOString();
-          updatedCount++;
-        }
-      }
-    });
-
-    res.json({ success: true, updatedCount });
+  // API Route: Create Family
+  app.post("/api/family/create", async (req, res) => {
+    const { uid, nombre } = req.body;
+    if (!uid || !nombre) {
+      return res.status(400).json({ error: "UID de usuario y nombre de familia son obligatorios." });
+    }
+    try {
+      const result = await dbService.createFamily(uid, nombre);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al crear la familia." });
+    }
   });
 
-  // Vite integration
+  // API Route: Join Family
+  app.post("/api/family/join", async (req, res) => {
+    const { uid, code } = req.body;
+    if (!uid || !code) {
+      return res.status(400).json({ error: "UID de usuario y código son obligatorios." });
+    }
+    try {
+      const result = await dbService.joinFamilyByCode(uid, code);
+      res.json(result);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // API Route: Scheduled check simulation
+  app.post("/api/cron/check-overdue", async (req, res) => {
+    try {
+      const result = await dbService.checkOverdueTasks();
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al ejecutar comprobación de tareas." });
+    }
+  });
+
+  // API Route: Add Points to User
+  app.post("/api/user/add-points", async (req, res) => {
+    const { uid, points } = req.body;
+    if (!uid || points === undefined) {
+      return res.status(400).json({ error: "UID y puntos son obligatorios." });
+    }
+    try {
+      const result = await dbService.addPointsToUser(uid, Number(points));
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al añadir puntos." });
+    }
+  });
+
+  // API Route: Get steps for all family members
+  app.get("/api/steps", async (req, res) => {
+    const { familia_id, fecha } = req.query;
+    if (!familia_id || !fecha) {
+      return res.status(400).json({ error: "familia_id y fecha son obligatorios." });
+    }
+    try {
+      const result = await dbService.getStepsForFamily(familia_id as string, fecha as string);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al obtener los pasos de la familia." });
+    }
+  });
+
+  // API Route: Log/Update steps for a user
+  app.post("/api/steps/log", async (req, res) => {
+    const { usuario_id, pasos, fecha } = req.body;
+    if (!usuario_id || pasos === undefined || !fecha) {
+      return res.status(400).json({ error: "usuario_id, pasos y fecha son obligatorios." });
+    }
+    try {
+      const result = await dbService.logSteps(usuario_id, Number(pasos), fecha);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al guardar los pasos." });
+    }
+  });
+
+  // API Route: Get Game Progress
+  app.get("/api/games/progress", async (req, res) => {
+    const { usuario_id } = req.query;
+    if (!usuario_id) {
+      return res.status(400).json({ error: "usuario_id es obligatorio." });
+    }
+    try {
+      const result = await dbService.getGameProgress(usuario_id as string);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al obtener el progreso del juego." });
+    }
+  });
+
+  // API Route: Save Game Progress
+  app.post("/api/games/progress/save", async (req, res) => {
+    const { usuario_id, game, score, bestTime } = req.body;
+    if (!usuario_id || !game || score === undefined) {
+      return res.status(400).json({ error: "usuario_id, game y score son obligatorios." });
+    }
+    try {
+      const result = await dbService.saveGameProgress(usuario_id, game, Number(score), bestTime !== undefined ? Number(bestTime) : undefined);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al guardar el progreso del juego." });
+    }
+  });
+
+  // Lazy Initialization for Gemini
+  let aiClient: GoogleGenAI | null = null;
+  function getGeminiClient() {
+    if (!aiClient) {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) {
+        throw new Error("GEMINI_API_KEY no está configurada.");
+      }
+      aiClient = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+    }
+    return aiClient;
+  }
+
+  // Helper to strip markdown and parse JSON
+  function parseCleanJson(text: string) {
+    let cleanText = text.trim();
+    if (cleanText.startsWith("```")) {
+      const lines = cleanText.split("\n");
+      if (lines[0].startsWith("```")) {
+        lines.shift();
+      }
+      if (lines[lines.length - 1].startsWith("```")) {
+        lines.pop();
+      }
+      cleanText = lines.join("\n").trim();
+    }
+    return JSON.parse(cleanText);
+  }
+
+  // API Route: Dynamic Focus Content Generation (using Gemini API)
+  app.post("/api/focus/content", async (req, res) => {
+    const { title, mode } = req.body;
+    if (!title || !mode) {
+      return res.status(400).json({ error: "title y mode son obligatorios." });
+    }
+
+    try {
+      const ai = getGeminiClient();
+      let prompt = "";
+
+      if (mode === "lectura") {
+        prompt = `Genera 3 capítulos cortos de lectura inspiradora en español para un niño/joven basados en la tarea: "${title}". Cada capítulo debe tener un título interesante ("title") y un texto reflexivo corto de 2-3 frases ("text"). Devuelve únicamente un JSON válido con la forma: [ { "title": "...", "text": "..." }, ... ] sin formato markdown ni texto adicional.`;
+      } else if (mode === "celular") {
+        prompt = `Genera 3 preguntas de opción múltiple estilo Duolingo en español para aprender inglés, inspiradas o relacionadas temáticamente con la tarea: "${title}". Cada pregunta debe tener: "prompt" (una instrucción en español como "Traduce esta frase sobre..."), "phrase" (una frase en inglés relacionada con el tema), "options" (una lista con exactamente 3 opciones en español, donde solo una sea la traducción correcta y las otras dos sean incorrectas pero plausibles), y "correctIndex" (el índice 0, 1 o 2 de la opción correcta en la lista "options"). Devuelve únicamente un JSON válido con la forma: [ { "prompt": "...", "phrase": "...", "options": ["...", "...", "..."], "correctIndex": 0 }, ... ] sin formato markdown ni texto adicional.`;
+      } else {
+        return res.status(400).json({ error: "Modo inválido para generación dinámica de contenido." });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se recibió respuesta válida del modelo.");
+      }
+
+      const parsedData = parseCleanJson(response.text);
+      res.json(parsedData);
+    } catch (e: any) {
+      console.error("[Gemini Focus Content Error]", e);
+      // Fail gracefully: send mock/fallback content if Gemini fails or is not configured
+      if (mode === "lectura") {
+        res.json([
+          {
+            title: `Capítulo 1: El Valor de ${title}`,
+            text: `Cada vez que nos proponemos completar ${title}, estamos sembrando semillas de responsabilidad en nuestro núcleo familiar. No se trata solo de la tarea en sí, sino del amor y la dedicación que ponemos en ella.`
+          },
+          {
+            title: "Capítulo 2: El Secreto del Ritmo",
+            text: "El tiempo se expande mágicamente cuando nos enfocamos sin interrupciones. Cada minuto de concentración nos regala minutos adicionales para reír, jugar y compartir juntos como familia."
+          },
+          {
+            title: "Capítulo 3: Crecer Paso a Paso",
+            text: "La perseverancia es el motor de los grandes sueños. Completar tus tareas diarias edifica un puente indestructible hacia un futuro libre, feliz y lleno de éxitos compartidos."
+          }
+        ]);
+      } else {
+        res.json([
+          {
+            prompt: `Traduce esta frase relacionada con ${title}:`,
+            phrase: `“Doing ${title} helps my family.”`,
+            options: [
+              `Hacer ${title} ayuda a mi familia.`,
+              `Mi perro juega en el jardín de la casa.`,
+              `Mañana comeremos manzanas frescas.`
+            ],
+            correctIndex: 0
+          },
+          {
+            prompt: "Traduce esta frase de superación familiar:",
+            phrase: "“Working together makes us stronger.”",
+            options: [
+              "Hacer la tarea es aburrido los lunes.",
+              "Trabajar juntos nos hace más fuertes.",
+              "Ayer leímos un libro de aventuras."
+            ],
+            correctIndex: 1
+          },
+          {
+            prompt: "Traduce esta meta diaria de constancia:",
+            phrase: "“Success is built step by step.”",
+            options: [
+              "La comida de mamá está deliciosa hoy.",
+              "El éxito se construye paso a paso.",
+              "Mi hermano menor duerme por la tarde."
+            ],
+            correctIndex: 1
+          }
+        ]);
+      }
+    }
+  });
+
+  // Vite integration / Static Assets serving
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -345,7 +510,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Vinculo Backend] Server is running on http://0.0.0.0:${PORT}`);
+    console.log(`[Vinculo Backend] Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
