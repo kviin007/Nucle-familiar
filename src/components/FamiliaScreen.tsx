@@ -166,10 +166,22 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
                 {member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Miembro'}
               </p>
 
-              {/* Completion Pill */}
-              <div className="bg-slate-50 border border-slate-150 rounded-full px-3 py-1 flex items-center gap-1.5 mt-1">
-                <div className={`w-2 h-2 rounded-full ${completion === 100 ? 'bg-emerald-500' : completion > 50 ? 'bg-amber-400' : 'bg-gray-300'}`} />
-                <span className="font-sans text-[10px] font-bold text-gray-700">{completion}% completado</span>
+              {/* Completion & Points Goal Progress Bar */}
+              <div className="w-full mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[10px] font-bold text-gray-500">
+                  <span>Meta de Puntos ({member.puntos || 0}/200 pts)</span>
+                  <span className="text-brand-primary">{Math.min(100, Math.round(((member.puntos || 0) / 200) * 100))}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-indigo-500 to-amber-400 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.round(((member.puntos || 0) / 200) * 100))}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[9px] text-gray-400">
+                  <span>{completion}% tareas completadas</span>
+                  <span>Goal: 200 pts</span>
+                </div>
               </div>
             </div>
           );
@@ -191,6 +203,79 @@ export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdat
           <p className="font-sans text-[10px] text-gray-400 mt-1">
             {copied ? 'Código guardado' : 'Copia el código para compartir'}
           </p>
+        </div>
+      </div>
+
+      {/* Points & Goals Progress Board */}
+      <div className="bg-white rounded-3xl p-6 border border-indigo-50/60 shadow-xl shadow-indigo-100/20 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-50 pb-4">
+          <div>
+            <h3 className="font-sans text-lg font-extrabold text-gray-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-500 font-bold">military_tech</span>
+              Avance Semanal de Puntos por Miembro
+            </h3>
+            <p className="font-sans text-xs text-gray-500">
+              Progreso relativo a la meta individual de 200 puntos semanales basada en tareas completadas.
+            </p>
+          </div>
+          <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto">
+            Meta: 200 PTS / Sem
+          </span>
+        </div>
+
+        <div className="space-y-4">
+          {familyMembers.map((member) => {
+            const currentPts = member.puntos || 0;
+            const targetPts = 200;
+            const pct = Math.min(100, Math.round((currentPts / targetPts) * 100));
+            const memberTasks = tareas.filter(t => t.usuario_id === member.uid);
+            const completedCount = memberTasks.filter(t => t.estado === 'completada').length;
+
+            return (
+              <div key={member.uid} className="bg-slate-50/60 border border-slate-100 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-[180px]">
+                  <img className="w-10 h-10 rounded-full object-cover border border-slate-200" src={member.avatar_url} alt={member.nombre} />
+                  <div>
+                    <h4 className="font-sans text-sm font-bold text-gray-900">{member.nombre}</h4>
+                    <p className="font-sans text-[10px] text-gray-500">{completedCount} tareas cumplidas</p>
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-gray-700">{currentPts} / {targetPts} PTS</span>
+                    <span className={pct >= 100 ? 'text-emerald-600 font-black' : 'text-brand-primary'}>
+                      {pct >= 100 ? '¡Meta Lograda! 🎉' : `${pct}% completado`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden p-0.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        pct >= 100
+                          ? 'bg-emerald-500'
+                          : pct >= 50
+                          ? 'bg-brand-primary'
+                          : 'bg-amber-400'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end md:self-auto">
+                  <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border ${
+                    pct >= 100
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : pct >= 50
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      : 'bg-slate-100 text-gray-600 border-slate-200'
+                  }`}>
+                    {pct >= 100 ? 'Campeón 🏆' : pct >= 50 ? 'En Racha 🔥' : 'En Progreso 🚀'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

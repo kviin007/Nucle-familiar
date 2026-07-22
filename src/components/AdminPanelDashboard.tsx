@@ -1,82 +1,148 @@
 import React, { useState } from 'react';
+import { Usuario, Familia, TareaDiaria, Meta } from '../types';
 
-interface FamilyRow {
-  name: string;
-  avatarLetter: string;
-  created: string;
-  membersAvatars: string[];
-  extraCount?: number;
-  progress: number;
-  color: string;
+interface AdminPanelDashboardProps {
+  usuarios: Usuario[];
+  familias: Familia[];
+  tareas: TareaDiaria[];
+  metas?: Meta[];
+  onSelectUser: (userId: string) => void;
 }
 
-export default function AdminPanelDashboard() {
+export default function AdminPanelDashboard({ usuarios, familias, tareas, metas = [], onSelectUser }: AdminPanelDashboardProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [exported, setExported] = useState<boolean>(false);
+
+  const totalUsuarios = usuarios.length;
+  const totalFamilias = familias.length;
+  const tareasCompletadasHoy = tareas.filter(t => t.estado === 'completada').length;
+  const totalTareasHoy = tareas.length;
+  const porcentajeTareasHoy = totalTareasHoy > 0 ? Math.round((tareasCompletadasHoy / totalTareasHoy) * 100) : 0;
+
+  const handleExportWeeklySummaryJSON = () => {
+    const exportData = {
+      fecha_exportacion: new Date().toISOString(),
+      periodo: "Resumen Semanal de Actividad Familiar",
+      metricas_generales: {
+        total_familias: totalFamilias,
+        total_usuarios: totalUsuarios,
+        total_tareas: totalTareasHoy,
+        tareas_completadas: tareasCompletadasHoy,
+        tasa_cumplimiento_porcentaje: porcentajeTareasHoy,
+        total_metas: metas.length
+      },
+      resumen_por_familia: dynamicFamilies.map(f => ({
+        familia_id: f.familia_id,
+        nombre: f.name,
+        miembros_count: f.members.length,
+        tasa_cumplimiento: `${f.progress}%`,
+        miembros: f.members.map(m => ({
+          uid: m.uid,
+          nombre: m.nombre,
+          puntos: m.puntos || 0,
+          racha_actual: m.racha_actual || 0
+        }))
+      })),
+      desglose_metas: metas.map(m => ({
+        id: m.meta_id,
+        titulo: m.titulo,
+        categoria: m.categoria,
+        usuario_id: m.usuario_id,
+        fecha_limite: m.fecha_limite
+      })),
+      desglose_tareas: tareas.map(t => ({
+        id: t.tarea_id,
+        titulo: t.titulo,
+        categoria: t.categoria || 'Otros',
+        estado: t.estado,
+        es_prioridad_alta: !!t.es_prioridad_alta,
+        usuario_id: t.usuario_id
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resumen_semanal_actividad_familiar_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setExported(true);
+    setTimeout(() => setExported(false), 3000);
+  };
 
   const summaryCards = [
-    { title: 'Total de Familias', value: '1,248', trend: '+12%', icon: 'group', color: 'text-brand-dark bg-brand-light' },
-    { title: 'Usuarios Activos (Mensuales)', value: '4,892', trend: '+5%', icon: 'person', color: 'text-rose-700 bg-rose-50' },
-    { title: 'Tareas Completadas Hoy', value: '12.5k', progress: 75, icon: 'task_alt', color: 'text-purple-700 bg-purple-50' }
-  ];
-
-  const familiesList: FamilyRow[] = [
-    {
-      name: 'Familia Martínez',
-      avatarLetter: 'M',
-      created: 'Creado hace 2 días',
-      membersAvatars: [
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuBZdNJ6YhlV8vxKXDcp-zth5G94OOxZPwiUYy_rbaw0x8D2uoOcJ1pY_rs-6GO1Dzm4ZrBiZ5019ssn8Rj9Q4P39PSVUw-NXM1YrQUrtIV5WbuLOViC37m7E4VFpBoeDgLVIDtmhRfpeCr3eHjR_mXI4qPb1nSA9uM0prYXiNg0mRfRhWyCEUf0BMTnpew63-dIW0T2GutM6ci5aETeL_ELXHLjY_Wk33e6sfEVpPGVMPe4ErFFFRpD0qN_avcYm01n23hy6TV456k',
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuD_ULNF0HZ2QgJZ-Y0PAoTxRfF2-WS1oWudJHKgTxOuslfDHzSBrhd_13_l89hAK2P8Ex4rdfJDQzqqcMCIALzMKTd03vMOSaMr2DA0s3CXFoJKq4q_lQ44Wt4POLPW6NaKwlQQLhCk53_--6DRCu4i7w15AknPi3TlF6IL6l2fdE24EwSWoLonVhXzDHzO2NIe2kt5o-prvLGy3u03L_4qi5tMwHYJziODhZI-77MfcW2gj1jUvO7XF2zyx2XGXd8o2o0tN4oDAqo',
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuTrtRFoIhuwZt1Fs84qxldHfJX0WmrdE2tOxYQyTEWgnbwWPuB5E--jmYr2N_Ko728hQ1lnXb7_wUMWaBonL-1bj4dq_wPe6dlqSJqNI3ObYyFd2pg6rFNiDNV80mdhNUnwMQGSZ4ka3hL-mApvP55pdnUjDoXKuIMQDJbp1dhykEBT0WARNCcB0KHcrwKg2VOFn-pekiQH7oDaCdc7xnkRimoOv3io-VBZiYBVCgdRyMCTn_4yhHC3T3k7bMUv1178H0233tf2nM'
-      ],
-      extraCount: 1,
-      progress: 85,
-      color: 'bg-emerald-500'
+    { 
+      title: 'Total de Familias', 
+      value: totalFamilias.toLocaleString(), 
+      trend: undefined, 
+      icon: 'group', 
+      color: 'text-brand-dark bg-brand-light' 
     },
-    {
-      name: 'Hogar Chen',
-      avatarLetter: 'C',
-      created: 'Creado hace 5 días',
-      membersAvatars: [
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuDYGNMXjo0YOH7N-rhu2udzKloBGQT_cCTujqSpYMrfLsmi0xPnKIWrkU8UrF1zUDlL5t6G2bUq47TacPzFzP-d8LfLM9qb8YIr-oUWkqDVBoc1QAws83cnCij1Mss6EfoNhu0NMWZ94mkFJDVyYL53kYZ4idO9NUOvGVxH6GqGfr2iB9xRQPiE61oZFf0wsLbSd4rvIZHG0Xjp0uNNfH_DL7pMOarTNWEuPMpqQivr58F_yPEYMXJDClzRwGMboTfKtzLin17r5h8',
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuCJUclD9T5awIyn-Nl0YfKEBDpr6zrPdbldDXu2mY74xL8MkzW9BH1pMZlOJarDkEn852W3CYg2I6PbAi-ZAC5nixrWaH4NjKil83WXBSMsrUm_DYt1iHWFmn5oqiWpYu9xwGw7WXg6Pugsep-MRWmgIkvJBn6v302cMoYDlPn_hGMRgTNf1hCickRmfMT--9UhwpYWPv0qx_wpUhKDhxMXO1ZGnMpZokQXJ-XBW91dml77jJUJVJaY2KYgnS99bI61umKmhxCcyDY'
-      ],
-      progress: 42,
-      color: 'bg-rose-500'
+    { 
+      title: 'Usuarios Activos', 
+      value: totalUsuarios.toLocaleString(), 
+      trend: undefined, 
+      icon: 'person', 
+      color: 'text-rose-700 bg-rose-50' 
     },
-    {
-      name: 'Familia Smith-Jones',
-      avatarLetter: 'S',
-      created: 'Creado hace 1 semana',
-      membersAvatars: [],
-      extraCount: 5,
-      progress: 92,
-      color: 'bg-brand-primary'
+    { 
+      title: 'Tareas Completadas', 
+      value: `${tareasCompletadasHoy} / ${totalTareasHoy}`, 
+      progress: porcentajeTareasHoy, 
+      icon: 'task_alt', 
+      color: 'text-purple-700 bg-purple-50' 
     }
   ];
 
-  const filteredFamilies = familiesList.filter((f) =>
+  const dynamicFamilies = familias.map((f) => {
+    const members = usuarios.filter((u) => u.familia_id === f.familia_id);
+    const memberUids = members.map(m => m.uid);
+    const familyTasks = tareas.filter(t => memberUids.includes(t.usuario_id));
+    const totalFamilyTasks = familyTasks.length;
+    const completedFamilyTasks = familyTasks.filter(t => t.estado === 'completada').length;
+    const progress = totalFamilyTasks > 0 ? Math.round((completedFamilyTasks / totalFamilyTasks) * 100) : 0;
+
+    return {
+      familia_id: f.familia_id,
+      name: f.nombre || 'Sin Nombre',
+      avatarLetter: f.nombre ? f.nombre.charAt(0).toUpperCase() : 'F',
+      created: `Código: ${f.codigo_invitacion || 'N/A'}`,
+      membersAvatars: members.map(m => m.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"),
+      progress: progress,
+      color: progress > 75 ? 'bg-emerald-500' : progress > 40 ? 'bg-brand-primary' : 'bg-rose-500',
+      members
+    };
+  });
+
+  const filteredFamilies = dynamicFamilies.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
       {/* Top Banner Overview */}
-      <section className="bg-brand-primary text-white rounded-3xl p-6 shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <section className="bg-brand-primary text-white rounded-3xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="font-sans text-xl md:text-2xl font-extrabold">Vista General</h2>
-          <p className="font-sans text-xs text-indigo-100 mt-1">Visión unificada y analíticas de la red Núcleo Familiar.</p>
+          <h2 className="font-sans text-xl md:text-2xl font-extrabold">Vista General del Administrador</h2>
+          <p className="font-sans text-xs text-indigo-100 mt-1">Visión unificada y analíticas de la red real en tiempo real.</p>
         </div>
-        <div className="flex gap-2">
-          <button className="text-white hover:opacity-80 flex items-center gap-1.5 bg-white/10 px-4 py-2 rounded-full text-xs font-bold">
-            <span className="material-symbols-outlined text-sm font-bold">warning</span>
-            Alertas
-          </button>
-          <button className="text-white hover:opacity-80 flex items-center gap-1.5 bg-white/10 px-4 py-2 rounded-full text-xs font-bold">
-            <span className="material-symbols-outlined text-sm font-bold">bar_chart</span>
-            Reportes
-          </button>
-        </div>
+
+        {/* Export JSON Button */}
+        <button
+          onClick={handleExportWeeklySummaryJSON}
+          className={`px-5 py-2.5 rounded-2xl font-sans text-xs font-bold border flex items-center gap-2 shadow-sm transition-all active:scale-95 ${
+            exported
+              ? 'bg-emerald-500 text-white border-emerald-400'
+              : 'bg-white text-brand-primary hover:bg-slate-50 border-white/20'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base font-bold">
+            {exported ? 'check_circle' : 'download'}
+          </span>
+          <span>{exported ? '¡Resumen Exportado!' : 'Exportar Resumen Semanal (JSON)'}</span>
+        </button>
       </section>
 
       {/* Summary Cards */}
@@ -91,11 +157,6 @@ export default function AdminPanelDashboard() {
             </div>
             <div className="mt-4">
               <span className="font-sans text-3xl font-extrabold text-gray-900">{card.value}</span>
-              {card.trend && (
-                <span className="font-sans text-xs font-extrabold text-emerald-600 ml-2 inline-flex items-center">
-                  <span className="material-symbols-outlined text-sm font-bold">trending_up</span> {card.trend}
-                </span>
-              )}
               {card.progress !== undefined && (
                 <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3">
                   <div className="bg-purple-600 h-1.5 rounded-full" style={{ width: `${card.progress}%` }}></div>
@@ -112,22 +173,18 @@ export default function AdminPanelDashboard() {
           <span className="material-symbols-outlined text-gray-400 text-lg mr-2 font-bold">search</span>
           <input
             type="text"
-            placeholder="Buscar familias, usuarios..."
-            className="w-full bg-transparent border-none text-xs focus:ring-0 focus:outline-none placeholder:text-gray-400 outline-none"
+            placeholder="Buscar familias..."
+            className="w-full bg-transparent border-none text-xs focus:ring-0 focus:outline-none placeholder:text-gray-400 outline-none text-gray-800"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button className="bg-white border border-indigo-50 shadow-sm text-gray-700 font-sans text-xs font-bold px-5 py-2.5 rounded-full flex items-center gap-1.5 hover:bg-slate-50 active:scale-95 transition-all">
-          <span className="material-symbols-outlined text-sm font-bold">filter_list</span>
-          Filtrar
-        </button>
       </section>
 
       {/* Recent Families Table */}
       <section className="bg-white rounded-3xl border border-indigo-50/60 shadow-xl shadow-indigo-100/20 overflow-hidden">
         <div className="px-6 py-4 border-b border-indigo-50 bg-slate-50/50">
-          <h3 className="font-sans text-sm font-extrabold text-gray-900 uppercase tracking-wider">Familias Activas Recientes</h3>
+          <h3 className="font-sans text-sm font-extrabold text-gray-900 uppercase tracking-wider">Familias Registradas</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -135,56 +192,64 @@ export default function AdminPanelDashboard() {
               <tr className="border-b border-indigo-50 font-sans text-[10px] font-bold text-gray-400 bg-slate-50/30 uppercase tracking-wider">
                 <th className="py-4 px-6">Nombre de la Familia</th>
                 <th className="py-4 px-6">Miembros</th>
-                <th className="py-4 px-6">Completado Semanal</th>
-                <th className="py-4 px-6 text-right">Acciones</th>
+                <th className="py-4 px-6">Progreso de Tareas Diarias</th>
               </tr>
             </thead>
             <tbody className="font-sans text-xs text-gray-700">
-              {filteredFamilies.map((family, idx) => (
-                <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50/30 transition-colors group">
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-brand-light text-brand-dark font-extrabold flex items-center justify-center">
-                        {family.avatarLetter}
-                      </div>
-                      <div>
-                        <p className="font-bold text-gray-900">{family.name}</p>
-                        <p className="text-[10px] text-gray-400">{family.created}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex -space-x-1.5">
-                      {family.membersAvatars.map((url, avIdx) => (
-                        <img
-                          key={avIdx}
-                          className="w-7 h-7 rounded-full border-2 border-white object-cover bg-gray-100 shadow-sm"
-                          src={url}
-                          alt="Member"
-                        />
-                      ))}
-                      {family.extraCount !== undefined && (
-                        <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-150 text-[10px] font-bold text-gray-500 flex items-center justify-center shadow-sm">
-                          +{family.extraCount}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 bg-gray-100 rounded-full h-1.5">
-                        <div className={`h-1.5 rounded-full ${family.color}`} style={{ width: `${family.progress}%` }}></div>
-                      </div>
-                      <span className="font-bold text-gray-900">{family.progress}%</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <button className="text-gray-400 hover:text-gray-900 p-1.5 rounded-full hover:bg-gray-100 transition-all opacity-0 group-hover:opacity-100">
-                      <span className="material-symbols-outlined text-base font-bold">more_vert</span>
-                    </button>
+              {filteredFamilies.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="text-center py-8 text-gray-400 font-sans italic">
+                    No se encontraron familias registradas.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredFamilies.map((family, idx) => (
+                  <tr key={family.familia_id || idx} className="border-b border-slate-100 hover:bg-slate-50/30 transition-colors">
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-2xl bg-brand-light text-brand-dark font-extrabold flex items-center justify-center">
+                          {family.avatarLetter}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900">{family.name}</p>
+                          <p className="text-[10px] text-gray-400">{family.created}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex flex-wrap gap-1.5">
+                        {family.members.length === 0 ? (
+                          <span className="text-[10px] text-gray-400 italic">Sin miembros</span>
+                        ) : (
+                          family.members.map((member) => (
+                            <button
+                              key={member.uid}
+                              onClick={() => onSelectUser(member.uid)}
+                              className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 hover:bg-indigo-50 border border-slate-150 rounded-full transition-all"
+                              title={`Ver perfil de ${member.nombre}`}
+                            >
+                              <img
+                                className="w-4 h-4 rounded-full object-cover"
+                                src={member.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"}
+                                alt="Member"
+                              />
+                              <span className="text-[10px] font-bold text-gray-700">{member.nombre}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 bg-gray-100 rounded-full h-1.5">
+                          <div className={`h-1.5 rounded-full ${family.color}`} style={{ width: `${family.progress}%` }}></div>
+                        </div>
+                        <span className="font-bold text-gray-900">{family.progress}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

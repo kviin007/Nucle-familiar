@@ -59,6 +59,13 @@ async function startServer() {
 
     // If it's Kevin (Admin)
     if (normalizedEmail === "kevin@familia.com" && password === "123456") {
+      try {
+        const user = await getAuth().getUserByEmail("kevin@familia.com");
+        await getAuth().setCustomUserClaims(user.uid, { admin: true });
+      } catch (e) {
+        // Fallback for simulation
+      }
+
       return res.json({
         success: true,
         user: {
@@ -193,7 +200,7 @@ async function startServer() {
 
   // API Route: Create Task
   app.post("/api/tasks/create", async (req, res) => {
-    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id } = req.body;
+    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id, categoria, es_prioridad_alta } = req.body;
     if (!titulo || !usuario_id) {
       return res.status(400).json({ error: "Título y destinatario son obligatorios." });
     }
@@ -204,7 +211,9 @@ async function startServer() {
         hora_programada,
         tiempo_estimado_min,
         visible_familia,
-        meta_id
+        meta_id,
+        categoria,
+        es_prioridad_alta
       });
       res.json(result);
     } catch (e: any) {

@@ -33,6 +33,8 @@ export interface TareaDiaria {
   usuario_id: string;
   meta_id?: string;
   titulo: string;
+  categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
+  es_prioridad_alta?: boolean;
   hora_programada: string; // HH:MM
   tiempo_estimado_min: number;
   estado: 'pendiente' | 'en_progreso' | 'completada' | 'vencido';

@@ -21,6 +21,11 @@ export default function DiarioScreen({ diario, usuarios, onAddEntry }: DiarioScr
     { label: 'Excelente', icon: '😁', value: 'Great', color: 'bg-amber-50 text-amber-800' },
   ];
 
+  const [supported] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && (!!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition);
+  });
+  const [recognitionInstance, setRecognitionInstance] = useState<any>(null);
+
   const handleSave = () => {
     if (text.trim()) {
       onAddEntry(text.trim(), mood, visible);
@@ -29,13 +34,45 @@ export default function DiarioScreen({ diario, usuarios, onAddEntry }: DiarioScr
   };
 
   const toggleRecording = () => {
-    setRecording(!recording);
-    if (!recording) {
-      // Simulate speech-to-text
-      setTimeout(() => {
-        setText((prev) => (prev ? prev + ' ' : '') + 'Compartimos un gran momento riendo en familia hoy.');
+    if (!supported) return;
+
+    if (recording) {
+      if (recognitionInstance) {
+        recognitionInstance.stop();
+      }
+      setRecording(false);
+    } else {
+      try {
+        const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const rec = new SpeechRecognitionClass();
+        rec.continuous = false;
+        rec.lang = 'es-ES';
+        rec.interimResults = false;
+
+        rec.onstart = () => {
+          setRecording(true);
+        };
+
+        rec.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setText((prev) => (prev ? prev + ' ' : '') + transcript);
+        };
+
+        rec.onerror = (err: any) => {
+          console.error("Speech recognition error:", err);
+          setRecording(false);
+        };
+
+        rec.onend = () => {
+          setRecording(false);
+        };
+
+        rec.start();
+        setRecognitionInstance(rec);
+      } catch (e) {
+        console.error("Failed to start speech recognition:", e);
         setRecording(false);
-      }, 2000);
+      }
     }
   };
 
@@ -84,16 +121,29 @@ export default function DiarioScreen({ diario, usuarios, onAddEntry }: DiarioScr
               onChange={(e) => setText(e.target.value)}
             />
             {/* Mic Button */}
-            <button
-              onClick={toggleRecording}
-              className={`absolute bottom-8 right-8 w-12 h-12 rounded-full flex items-center justify-center shadow-md transition-all ${
-                recording ? 'bg-rose-500 text-white animate-bounce' : 'bg-brand-primary text-white hover:bg-brand-dark'
-              }`}
-            >
-              <span className="material-symbols-outlined text-xl">
-                {recording ? 'graphic_eq' : 'mic'}
-              </span>
-            </button>
+            <div className="absolute bottom-8 right-8 group z-10">
+              <button
+                disabled={!supported}
+                onClick={toggleRecording}
+                className={`w-12 h-12 rounded-full flex items-center justify-center shadow-md transition-all cursor-pointer ${
+                  !supported 
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-slate-200'
+                    : recording 
+                      ? 'bg-rose-500 text-white animate-bounce' 
+                      : 'bg-brand-primary text-white hover:bg-brand-dark'
+                }`}
+                title={!supported ? "El dictado de voz no está soportado en este navegador" : "Grabar con voz"}
+              >
+                <span className="material-symbols-outlined text-xl">
+                  {!supported ? 'mic_off' : recording ? 'graphic_eq' : 'mic'}
+                </span>
+              </button>
+              {!supported && (
+                <div className="absolute bottom-14 right-0 bg-slate-800 text-white text-[10px] rounded py-1.5 px-3 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+                  El dictado de voz no es soportado (usa Chrome, Edge o Safari)
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Controls & Save */}

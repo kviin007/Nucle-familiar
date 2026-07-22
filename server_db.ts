@@ -68,6 +68,26 @@ try {
   console.log("[Firebase Admin] Initialization bypassed or failed. Using locally simulated in-memory state:", e);
 }
 
+// Function to handle Firestore errors and fallback gracefully
+function handleFirestoreError(err: any, context: string) {
+  const errMsg = String(err?.message || err);
+  if (
+    errMsg.includes("PERMISSION_DENIED") ||
+    errMsg.includes("has not been used in project") ||
+    errMsg.includes("disabled") ||
+    errMsg.includes("PROJECT_NOT_FOUND") ||
+    errMsg.includes("Cloud Firestore API") ||
+    err?.code === 7
+  ) {
+    if (isFirestoreEnabled) {
+      console.warn(`[Firebase Admin] Cloud Firestore API is disabled or inaccessible in GCP project. Automatically falling back to local in-memory database (${context}).`);
+      isFirestoreEnabled = false;
+    }
+  } else {
+    console.error(`[Firestore Error - ${context}]`, err);
+  }
+}
+
 // Function to ensure Kevin Admin user exists in Firebase Auth with custom claims
 async function ensureKevinAdminExists() {
   if (!isFirestoreEnabled || !db) return;
@@ -92,7 +112,7 @@ async function ensureKevinAdminExists() {
       }
     }
 
-    if (userRecord) {
+    if (userRecord && isFirestoreEnabled && db) {
       // Set Custom Claims for admin
       await authInstance.setCustomUserClaims(userRecord.uid, { admin: true });
       console.log("[Firebase Admin] Admin claim successfully set for Kevin.");
@@ -126,13 +146,13 @@ async function ensureKevinAdminExists() {
       }
     }
   } catch (err) {
-    console.error("[Firebase Admin] Error ensuring Kevin admin exists:", err);
+    handleFirestoreError(err, "ensureKevinAdminExists");
   }
 }
 
 // Function to seed Firestore if empty
 async function seedFirestore() {
-  if (!db) return;
+  if (!db || !isFirestoreEnabled) return;
   try {
     const userCol = await db.collection("usuarios").limit(1).get();
     if (userCol.empty) {
@@ -162,7 +182,7 @@ async function seedFirestore() {
       console.log("[Firebase Admin] Seeding completed!");
     }
   } catch (err) {
-    console.error("[Firebase Admin] Firestore Seeding Error:", err);
+    handleFirestoreError(err, "seedFirestore");
   }
 }
 
@@ -220,7 +240,7 @@ export const dbService = {
 
         return { usuarios, metas, tareas, diario, familias };
       } catch (err) {
-        console.error("[Firestore getState Error, falling back to local]", err);
+        handleFirestoreError(err, "getState");
       }
     }
     return localDatabase;
@@ -343,6 +363,8 @@ export const dbService = {
       usuario_id: task.usuario_id!,
       meta_id: task.meta_id || "",
       titulo: task.titulo!,
+      categoria: task.categoria || "Otros",
+      es_prioridad_alta: !!task.es_prioridad_alta,
       hora_programada: task.hora_programada || "12:00",
       tiempo_estimado_min: Number(task.tiempo_estimado_min) || 30,
       estado: "pendiente",

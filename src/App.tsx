@@ -13,18 +13,26 @@ import UserDetailScreen from './components/UserDetailScreen';
 import CodeExporterScreen from './components/CodeExporterScreen';
 import FocusModeOverlay from './components/FocusModeOverlay';
 
-// Import Firebase Authentication if available
+// Import Firebase Authentication and Firestore if available
 import { 
   auth, 
+  firestore,
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
   signOut, 
   onAuthStateChanged,
-  getIdTokenResult
+  getIdTokenResult,
+  collection,
+  onSnapshot
 } from './lib/firebase';
 
-// No preset mock users for clean real auth system
+interface ToastNotification {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onRetry?: () => void;
+}
 
 export default function App() {
   const [view, setView] = useState<ViewType | 'family_onboarding'>('onboarding');
@@ -35,6 +43,23 @@ export default function App() {
   const [familias, setFamilias] = useState<Familia[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
+
+  // Toast System
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info', onRetry?: () => void) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, type, onRetry }]);
+    if (type !== 'error') {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, 4000);
+    }
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   // Authenticated user state
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -48,6 +73,49 @@ export default function App() {
   const [loginMethod, setLoginMethod] = useState<'google' | 'email'>('email');
   const [loginEmail, setLoginEmail] = useState<string>('kevin@familia.com');
   const [loginPassword, setLoginPassword] = useState<string>('123456');
+
+  // Real-time Firestore Listeners (onSnapshot)
+  useEffect(() => {
+    if (!firestore) return;
+
+    const unsubTareas = onSnapshot(collection(firestore, "tareas_diarias"), (snap) => {
+      const list: TareaDiaria[] = [];
+      snap.forEach(d => list.push({ tarea_id: d.id, ...d.data() } as TareaDiaria));
+      setTareas(list);
+    }, () => showToast("Error al cargar tareas en vivo", "error", () => fetchState()));
+
+    const unsubMetas = onSnapshot(collection(firestore, "metas"), (snap) => {
+      const list: Meta[] = [];
+      snap.forEach(d => list.push({ meta_id: d.id, ...d.data() } as Meta));
+      setMetas(list);
+    }, () => showToast("Error al cargar metas en vivo", "error", () => fetchState()));
+
+    const unsubUsuarios = onSnapshot(collection(firestore, "usuarios"), (snap) => {
+      const list: Usuario[] = [];
+      snap.forEach(d => list.push({ uid: d.id, ...d.data() } as Usuario));
+      setUsuarios(list);
+    }, () => showToast("Error al cargar usuarios en vivo", "error", () => fetchState()));
+
+    const unsubFamilias = onSnapshot(collection(firestore, "familias"), (snap) => {
+      const list: Familia[] = [];
+      snap.forEach(d => list.push({ familia_id: d.id, ...d.data() } as Familia));
+      setFamilias(list);
+    }, () => showToast("Error al cargar familias en vivo", "error", () => fetchState()));
+
+    const unsubDiario = onSnapshot(collection(firestore, "diario"), (snap) => {
+      const list: DiarioEntrada[] = [];
+      snap.forEach(d => list.push({ entrada_id: d.id, ...d.data() } as DiarioEntrada));
+      setDiario(list);
+    }, () => showToast("Error al cargar diario en vivo", "error", () => fetchState()));
+
+    return () => {
+      unsubTareas();
+      unsubMetas();
+      unsubUsuarios();
+      unsubFamilias();
+      unsubDiario();
+    };
+  }, []);
 
   // Fetch full synchronized state from backend Express API
   const fetchState = async () => {
@@ -218,6 +286,7 @@ export default function App() {
 
   // Sync actions with Express backend
   const handleToggleTask = async (taskId: string) => {
+    const task = tareas.find(t => t.tarea_id === taskId);
     try {
       const res = await fetch('/api/tasks/toggle', {
         method: 'POST',
@@ -225,6 +294,25 @@ export default function App() {
         body: JSON.stringify({ tarea_id: taskId }),
       });
       if (res.ok) {
+        // If task is transitioning to completed
+        if (task && task.estado !== 'completada') {
+          if (task.es_prioridad_alta) {
+            try {
+              const confetti = (await import('canvas-confetti')).default;
+              confetti({
+                particleCount: 120,
+                spread: 80,
+                origin: { y: 0.6 },
+                colors: ['#6366F1', '#F59E0B', '#10B981', '#EC4899']
+              });
+            } catch (e) {
+              console.log('Confetti load error', e);
+            }
+            showToast("⭐ ¡Increíble! Has completado una tarea de alta prioridad.", "success");
+          } else {
+            showToast("¡Tarea completada con éxito!", "success");
+          }
+        }
         await fetchState(); // fetch updated state
       }
     } catch (e) {
@@ -251,7 +339,15 @@ export default function App() {
     setFocusedTask(null);
   };
 
-  const handleAddTask = async (titulo: string, userId: string, scheduledTime: string, estimatedTime: number, visible: boolean) => {
+  const handleAddTask = async (
+    titulo: string,
+    userId: string,
+    scheduledTime: string,
+    estimatedTime: number,
+    visible: boolean,
+    categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros',
+    esPrioridadAlta?: boolean
+  ) => {
     try {
       const res = await fetch('/api/tasks/create', {
         method: 'POST',
@@ -261,7 +357,9 @@ export default function App() {
           usuario_id: userId,
           hora_programada: scheduledTime,
           tiempo_estimado_min: estimatedTime,
-          visible_familia: visible
+          visible_familia: visible,
+          categoria: categoria || 'Otros',
+          es_prioridad_alta: !!esPrioridadAlta
         }),
       });
       if (res.ok) {
@@ -887,7 +985,7 @@ export default function App() {
               <FamiliaScreen 
                 usuarios={usuarios} 
                 tareas={tareas} 
-                onInviteClick={() => {}} 
+                onInviteClick={() => showToast("¡Código de invitación copiado al portapapeles! 📋", "success")} 
                 onUpdateUser={handleUpdateUser}
                 currentUser={currentUser}
                 familias={familias}
@@ -907,7 +1005,18 @@ export default function App() {
                 onStateUpdate={fetchState}
               />
             )}
-            {view === 'admin-dashboard' && <AdminPanelDashboard />}
+            {view === 'admin-dashboard' && (
+              <AdminPanelDashboard
+                usuarios={usuarios}
+                familias={familias}
+                tareas={tareas}
+                metas={metas}
+                onSelectUser={(uid) => {
+                  setSelectedUserId(uid);
+                  setView('admin-user-detail');
+                }}
+              />
+            )}
             {view === 'admin-families' && (
               <FamilyNetworkScreen
                 usuarios={usuarios}
@@ -994,6 +1103,41 @@ export default function App() {
           <span className="font-sans text-[9px] uppercase tracking-wider mt-1">Código</span>
         </button>
       </nav>
+
+      {/* Toast Notifications Container */}
+      <div className="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto p-4 rounded-2xl shadow-xl border flex items-center justify-between gap-3 text-xs font-bold transition-all animate-bounce-short ${
+              toast.type === 'error'
+                ? 'bg-rose-900 text-white border-rose-700'
+                : toast.type === 'success'
+                ? 'bg-emerald-900 text-white border-emerald-700'
+                : 'bg-slate-900 text-white border-slate-700'
+            }`}
+          >
+            <span className="flex-1">{toast.message}</span>
+            {toast.onRetry && (
+              <button
+                onClick={() => {
+                  toast.onRetry?.();
+                  removeToast(toast.id);
+                }}
+                className="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-[10px] font-black uppercase cursor-pointer"
+              >
+                Reintentar
+              </button>
+            )}
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="text-white/60 hover:text-white font-black text-sm cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
