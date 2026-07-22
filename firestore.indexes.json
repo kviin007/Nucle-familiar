@@ -1,0 +1,19 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "partidas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "familia_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "game_type",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

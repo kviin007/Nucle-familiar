@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario } from '../../types';
-import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import { Trophy, ArrowLeft, RotateCw, UserCheck, CheckCircle } from 'lucide-react';
 
@@ -35,7 +35,7 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
   const [isHorizontal, setIsHorizontal] = useState<boolean>(true);
   const [placementReady, setPlacementReady] = useState<boolean>(false);
 
-  // Firestore sync
+  // Synchronize main partida document
   useEffect(() => {
     if (!firestore || !partidaId) return;
     const unsub = onSnapshot(doc(firestore, "partidas", partidaId), (docSnap) => {
@@ -47,6 +47,21 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
     return () => unsub();
   }, [partidaId]);
 
+  // Synchronize private document for my fleet
+  useEffect(() => {
+    if (!firestore || !partidaId || !currentUser.uid) return;
+    const unsub = onSnapshot(doc(firestore, "partidas", partidaId, "privado", currentUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.flota) {
+          setPlacedShips(data.flota);
+          setPlacementReady(true);
+        }
+      }
+    });
+    return () => unsub();
+  }, [partidaId, currentUser.uid]);
+
   const players = localPartida?.jugadores || [];
   const p1Uid = players[0];
   const p2Uid = players[1];
@@ -55,15 +70,49 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
 
   const myShotsKey = isP1 ? 'p1_disparos' : 'p2_disparos';
   const enemyShotsKey = isP1 ? 'p2_disparos' : 'p1_disparos';
-  const myBoardKey = isP1 ? 'p1_flota' : 'p2_flota';
-  const enemyBoardKey = isP1 ? 'p2_flota' : 'p1_flota';
 
   const myShots: Record<string, 'agua' | 'tocado'> = localPartida?.[myShotsKey] || {};
   const enemyShotsReceived: Record<string, 'agua' | 'tocado'> = localPartida?.[enemyShotsKey] || {};
-  const enemyBoardFleet: Record<string, boolean> = localPartida?.[enemyBoardKey] || {};
 
   const isMyTurn = localPartida?.turno_actual === currentUser.uid;
   const isPhaseCombat = localPartida?.estado === 'en_curso';
+
+  // Automatic Resolution of Pending Enemy Shots against my private fleet
+  useEffect(() => {
+    if (!firestore || !isPhaseCombat || !localPartida?.pending_shot) return;
+
+    const pendingShot = localPartida.pending_shot;
+    // Only resolve if the shot was fired by my rival at me
+    if (pendingShot.shooter_uid !== currentUser.uid) {
+      const shotCoord = pendingShot.coord;
+      const isHit = !!placedShips[shotCoord];
+      const result = isHit ? 'tocado' : 'agua';
+
+      const shooterShotsKey = isP1 ? 'p2_disparos' : 'p1_disparos';
+      const currentShooterShots = localPartida[shooterShotsKey] || {};
+      const updatedShooterShots = { ...currentShooterShots, [shotCoord]: result };
+
+      // Count my remaining unhit ship tiles
+      const totalMyShipTiles = Object.keys(placedShips).length;
+      let totalHitsOnMe = 0;
+      Object.keys(placedShips).forEach(k => {
+        if (updatedShooterShots[k] === 'tocado') {
+          totalHitsOnMe++;
+        }
+      });
+
+      const isDefeated = totalMyShipTiles > 0 && totalHitsOnMe >= totalMyShipTiles;
+
+      updateDoc(doc(firestore, "partidas", partidaId), {
+        [shooterShotsKey]: updatedShooterShots,
+        turno_actual: currentUser.uid, // turn passes to me
+        pending_shot: null,
+        estado: isDefeated ? 'finalizada' : 'en_curso',
+        ganador_uid: isDefeated ? pendingShot.shooter_uid : null,
+        ultima_actualizacion: serverTimestamp()
+      }).catch(err => console.error("Error resolving pending shot:", err));
+    }
+  }, [localPartida?.pending_shot, placedShips, isPhaseCombat, currentUser.uid]);
 
   // Ship Placement Handler
   const handleCellClickPlacement = (r: number, c: number) => {
@@ -93,55 +142,42 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
     }
   };
 
-  // Confirm fleet placement to Firestore
+  // Confirm fleet placement to Private Firestore Subcollection
   const handleConfirmPlacement = async () => {
-    if (!placementReady) return;
+    if (!placementReady || !firestore) return;
 
+    // Save fleet privately so rival CANNOT read it
+    await setDoc(doc(firestore, "partidas", partidaId, "privado", currentUser.uid), {
+      flota: placedShips,
+      actualizado_en: serverTimestamp()
+    });
+
+    const otherReady = isP1 ? localPartida?.p2_ready : localPartida?.p1_ready;
     const updatePayload: any = {
-      [myBoardKey]: placedShips,
       [`${isP1 ? 'p1' : 'p2'}_ready`]: true,
       ultima_actualizacion: serverTimestamp()
     };
 
-    // Check if both ready
-    const otherReady = isP1 ? localPartida?.p2_ready : localPartida?.p1_ready;
     if (otherReady) {
       updatePayload.estado = 'en_curso';
     }
 
-    if (firestore) {
-      await updateDoc(doc(firestore, "partidas", partidaId), updatePayload);
-    }
+    await updateDoc(doc(firestore, "partidas", partidaId), updatePayload);
   };
 
-  // Combat Shot Handler
+  // Combat Shot Handler (sends pending shot coordinate)
   const handleFireShot = async (r: number, c: number) => {
-    if (!isMyTurn || !isPhaseCombat || localPartida?.estado === 'finalizada') return;
+    if (!isMyTurn || !isPhaseCombat || localPartida?.estado === 'finalizada' || localPartida?.pending_shot) return;
 
     const key = `${r},${c}`;
     if (myShots[key]) return; // already shot here
 
-    const isHit = !!enemyBoardFleet[key];
-    const updatedShots = { ...myShots, [key]: isHit ? ('tocado' as const) : ('agua' as const) };
-
-    // Check if all enemy tiles hit
-    const enemyFleetKeys = Object.keys(enemyBoardFleet);
-    const totalEnemyTiles = enemyFleetKeys.length;
-    const totalHits = enemyFleetKeys.filter(k => updatedShots[k] === 'tocado').length;
-
-    const isVictory = totalEnemyTiles > 0 && totalHits >= totalEnemyTiles;
-    const nextTurnUid = isP1 ? p2Uid : p1Uid;
-
-    if (isVictory) {
-      onAwardPoints(150);
-    }
-
     if (firestore) {
       await updateDoc(doc(firestore, "partidas", partidaId), {
-        [myShotsKey]: updatedShots,
-        turno_actual: nextTurnUid,
-        estado: isVictory ? 'finalizada' : 'en_curso',
-        ganador_uid: isVictory ? currentUser.uid : null,
+        pending_shot: {
+          shooter_uid: currentUser.uid,
+          coord: key
+        },
         ultima_actualizacion: serverTimestamp()
       });
     }
@@ -271,7 +307,7 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
             {Array(10).fill(null).map((_, r) =>
               Array(10).fill(null).map((_, c) => {
                 const key = `${r},${c}`;
-                const hasShip = placedShips[key] || (isP1 ? localPartida?.p1_flota?.[key] : localPartida?.p2_flota?.[key]);
+                const hasShip = !!placedShips[key];
                 const receivedShot = enemyShotsReceived[key];
 
                 return (

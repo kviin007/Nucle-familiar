@@ -73,9 +73,31 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
   const players = localPartida?.jugadores || [];
   const isHost = players[0] === currentUser.uid;
 
-  // Host calls next number
+  // Track host inactivity timeout (>20 seconds)
+  const lastUpdateMillis = localPartida?.ultima_actualizacion?.toMillis
+    ? localPartida.ultima_actualizacion.toMillis()
+    : localPartida?.ultima_actualizacion?.seconds
+    ? localPartida.ultima_actualizacion.seconds * 1000
+    : null;
+
+  const [secondsInactive, setSecondsInactive] = useState<number>(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (lastUpdateMillis) {
+        setSecondsInactive(Math.floor((Date.now() - lastUpdateMillis) / 1000));
+      } else {
+        setSecondsInactive(999);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastUpdateMillis]);
+
+  const canCallNextNumber = isHost || secondsInactive > 20;
+
+  // Host (or active player if host >20s inactive) calls next number
   const handleCallNextNumber = async () => {
-    if (localPartida?.estado === 'finalizada') return;
+    if (localPartida?.estado === 'finalizada' || !canCallNextNumber) return;
 
     let availableNums: number[] = [];
     for (let i = 1; i <= 75; i++) {
@@ -204,15 +226,25 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
           </div>
         </div>
 
-        <div className="flex gap-2">
-          {isHost && localPartida?.estado !== 'finalizada' && (
-            <button
-              onClick={handleCallNextNumber}
-              className="px-5 py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-extrabold text-xs rounded-2xl shadow cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-            >
-              <Volume2 size={16} />
-              Cantar Siguiente Balota
-            </button>
+        <div className="flex flex-wrap gap-2 items-center">
+          {localPartida?.estado !== 'finalizada' && (
+            canCallNextNumber ? (
+              <button
+                onClick={handleCallNextNumber}
+                className={`px-5 py-3 font-extrabold text-xs rounded-2xl shadow cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 ${
+                  isHost
+                    ? 'bg-amber-400 hover:bg-amber-500 text-slate-950'
+                    : 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                }`}
+              >
+                <Volume2 size={16} />
+                {isHost ? 'Cantar Siguiente Balota' : 'Cantar Balota (Anfitrión Inactivo >20s)'}
+              </button>
+            ) : (
+              <span className="px-4 py-2.5 bg-indigo-950/80 text-amber-300 font-bold text-[11px] rounded-2xl border border-indigo-800/80 shadow-sm">
+                Esperando anfitrión... ({Math.max(0, 20 - secondsInactive)}s para tomar control)
+              </span>
+            )
           )}
 
           <button

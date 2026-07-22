@@ -3,6 +3,7 @@ import { Usuario } from '../../types';
 import { 
   collection, 
   addDoc, 
+  setDoc,
   onSnapshot, 
   query, 
   where, 
@@ -10,8 +11,8 @@ import {
   updateDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { firestore } from '../../lib/firebase';
-import { Users, Plus, ArrowLeft, Play, RefreshCw } from 'lucide-react';
+import { firestore, isFirebaseEnabled } from '../../lib/firebase';
+import { Users, Plus, ArrowLeft, Play, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react';
 
 interface GameLobbyProps {
   gameType: 'chess' | 'guesswho' | 'bingo' | 'battleship';
@@ -36,12 +37,13 @@ export default function GameLobby({
   const [loading, setLoading] = useState<boolean>(true);
   const [invitedMembers, setInvitedMembers] = useState<string[]>([]);
   const [creating, setCreating] = useState<boolean>(false);
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
 
   const familyMembers = usuarios.filter(u => u.familia_id === currentUser.familia_id && u.uid !== currentUser.uid);
 
   // Fetch active partidas for this family and gameType
   useEffect(() => {
-    if (!firestore || !currentUser.familia_id) {
+    if (!firestore || !isFirebaseEnabled || !currentUser.familia_id) {
       setLoading(false);
       return;
     }
@@ -59,9 +61,16 @@ export default function GameLobby({
       });
       setActivePartidas(list);
       setLoading(false);
-    }, (err) => {
+      setIndexErrorUrl(null);
+    }, (err: any) => {
       console.error("Error fetching partidas lobby:", err);
       setLoading(false);
+      if (err?.message) {
+        const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+          setIndexErrorUrl(urlMatch[0]);
+        }
+      }
     });
 
     return () => unsub();
@@ -79,7 +88,7 @@ export default function GameLobby({
 
   // Create game
   const handleCreateGame = async () => {
-    if (!firestore || creating) return;
+    if (!firestore || !isFirebaseEnabled || creating) return;
     setCreating(true);
 
     try {
@@ -102,12 +111,22 @@ export default function GameLobby({
         turno_actual: currentUser.uid,
         estado: players.length >= maxPlayers ? 'en_curso' : 'sala_espera',
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Chess initial
-        p1_secret_id: p1_secret,
-        p2_secret_id: p2_secret,
         numeros_cantados: [],
         creado_en: serverTimestamp(),
         ultima_actualizacion: serverTimestamp()
       });
+
+      // Save secret character to private subcollections for player security
+      if (gameType === 'guesswho' && p1_secret) {
+        await setDoc(doc(firestore, "partidas", docRef.id, "privado", currentUser.uid), {
+          secret_id: p1_secret
+        });
+        if (invitedMembers[0] && p2_secret) {
+          await setDoc(doc(firestore, "partidas", docRef.id, "privado", invitedMembers[0]), {
+            secret_id: p2_secret
+          });
+        }
+      }
 
       onStartGame(docRef.id, {
         game_type: gameType,
@@ -116,8 +135,6 @@ export default function GameLobby({
         jugadores: players,
         turno_actual: currentUser.uid,
         estado: players.length >= maxPlayers ? 'en_curso' : 'sala_espera',
-        p1_secret_id: p1_secret,
-        p2_secret_id: p2_secret,
         numeros_cantados: []
       });
     } catch (e) {
@@ -232,6 +249,46 @@ export default function GameLobby({
         </button>
       </div>
 
+      {/* Firebase Disabled Notice */}
+      {!isFirebaseEnabled && (
+        <div className="bg-rose-50 border-2 border-rose-200 rounded-3xl p-5 text-left space-y-2 shadow-sm">
+          <div className="flex items-center gap-2 text-rose-800 font-extrabold text-sm">
+            <AlertTriangle className="text-rose-600 shrink-0" size={20} />
+            <span>Firebase No Configurado</span>
+          </div>
+          <p className="text-xs text-rose-900/90 leading-relaxed font-medium">
+            Los juegos multijugador requieren que configures Firebase en las variables de entorno (<code className="bg-rose-100 font-mono px-1 rounded font-bold text-rose-950">VITE_FIREBASE_*</code>). Sin estas credenciales no se pueden crear salas ni sincronizar movimientos.
+          </p>
+        </div>
+      )}
+
+      {/* Index Creation Link Banner */}
+      {indexErrorUrl && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 text-left space-y-3 shadow-sm">
+          <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
+            <AlertTriangle className="text-amber-600 shrink-0" size={18} />
+            <span>Se requiere un Índice Compuesto en Firestore</span>
+          </div>
+          <p className="text-xs text-amber-900/90 leading-relaxed">
+            Firestore necesita un índice compuesto para consultar la colección <code className="font-mono bg-amber-100 px-1 rounded font-bold">partidas</code> por <code className="font-mono bg-amber-100 px-1 rounded font-bold">familia_id</code> y <code className="font-mono bg-amber-100 px-1 rounded font-bold">game_type</code>.
+          </p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <a
+              href={indexErrorUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow transition-all cursor-pointer"
+            >
+              <ExternalLink size={14} />
+              Crear Índice Automático en Console
+            </a>
+            <span className="text-[10px] text-amber-800 font-mono">
+              O usa: <code className="bg-amber-100 px-1 font-bold">firebase deploy --only firestore:indexes</code>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Active Open Rooms */}
       <div className="bg-white rounded-3xl p-6 border border-indigo-50 shadow-xl space-y-4 text-left">
         <div className="flex justify-between items-center">
@@ -242,8 +299,12 @@ export default function GameLobby({
           <RefreshCw size={14} className="text-gray-400 animate-spin" />
         </div>
 
-        {loading ? (
-          <div className="py-8 text-center text-xs text-gray-400">Cargando salas activas...</div>
+        {!isFirebaseEnabled ? (
+          <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-rose-500 font-bold">
+            No se pueden cargar salas activas sin configurar las credenciales de Firebase.
+          </div>
+        ) : loading ? (
+          <div className="py-8 text-center text-xs text-gray-400 font-bold">Cargando salas activas...</div>
         ) : activePartidas.length === 0 ? (
           <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-gray-400">
             No hay salas activas creadas para este juego actualmente. ¡Crea la primera arriba!

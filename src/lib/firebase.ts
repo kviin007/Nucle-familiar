@@ -23,12 +23,12 @@ import {
 } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAwoUbKx6ClQ6hod6vQ0yaC1AXSsNQE5vk",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "nucleo-familiar-5bb3c.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "nucleo-familiar-5bb3c",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "nucleo-familiar-5bb3c.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "706188936407",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:706188936407:web:0c82e4e52c8b543fdc1c92"
 };
 
 const isRealFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);

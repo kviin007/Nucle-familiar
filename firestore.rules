@@ -82,6 +82,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
       allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
       allow delete: if isAdmin() || (isAuthenticated() && belongsToFamily(resource.data.familia_id));
+
+      // Private secret player subcollection (only the player themselves or admin can read/write)
+      match /privado/{uid} {
+        allow read, write: if isAuthenticated() && (isOwner(uid) || request.auth.uid == uid || isAdmin());
+      }
     }
 
     // Game Progress Collection Rules (juegos_progreso)

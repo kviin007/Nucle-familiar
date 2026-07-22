@@ -17,6 +17,7 @@ import FocusModeOverlay from './components/FocusModeOverlay';
 import { 
   auth, 
   firestore,
+  isFirebaseEnabled,
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
@@ -968,6 +969,29 @@ export default function App() {
           </div>
         ) : (
           <div className="max-w-5xl mx-auto">
+            {!isFirebaseEnabled && (
+              <div className="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm text-left">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 mt-0.5 md:mt-0 shadow-sm">
+                    <span className="material-symbols-outlined text-2xl">warning</span>
+                  </div>
+                  <div>
+                    <h3 className="font-sans text-sm font-extrabold text-amber-950">
+                      Firebase no está configurado
+                    </h3>
+                    <p className="font-sans text-xs text-amber-900/90 mt-0.5 leading-relaxed">
+                      Las funciones de sincronización y juegos multijugador no funcionarán hasta configurar las credenciales en tus variables de entorno (<code className="bg-amber-100/90 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-amber-950">VITE_FIREBASE_*</code>).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setView('code-exporter')}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-sans text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
+                >
+                  Ver Instrucciones .env
+                </button>
+              </div>
+            )}
             {view === 'hoy' && (
               <HoyScreen
                 usuarios={usuarios}
