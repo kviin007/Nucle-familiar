@@ -1274,9 +1274,12 @@ export default function App() {
                 usuarios={usuarios}
                 tareas={tareas}
                 metas={metas}
+                diario={diario}
                 currentUser={currentUser}
                 onToggleTask={handleTaskClick}
                 onAddTaskClick={() => setView('admin-assign-task')}
+                onGoToMetas={() => setView('metas')}
+                onGoToDiario={() => setView('diario')}
               />
             )}
             {view === 'metas' && (

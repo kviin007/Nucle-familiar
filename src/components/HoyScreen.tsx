@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { TareaDiaria, Usuario, Meta } from '../types';
+import { TareaDiaria, Usuario, Meta, DiarioEntrada } from '../types';
 
 interface HoyScreenProps {
   usuarios: Usuario[];
   tareas: TareaDiaria[];
   metas: Meta[];
+  diario?: DiarioEntrada[];
   currentUser: any;
   onToggleTask: (taskId: string) => void;
   onAddTaskClick: () => void;
+  onGoToMetas?: () => void;
+  onGoToDiario?: () => void;
 }
+
+const EMOTION_CONFIG: Record<string, { emoji: string; label: string; bg: string; text: string; border: string; score: number }> = {
+  Great: { emoji: '😄', label: 'Excelente', bg: 'bg-emerald-100 text-emerald-900', text: 'text-emerald-700', border: 'border-emerald-200', score: 5 },
+  Good: { emoji: '🙂', label: 'Bueno', bg: 'bg-blue-100 text-blue-900', text: 'text-blue-700', border: 'border-blue-200', score: 4 },
+  Okay: { emoji: '😐', label: 'Tranquilo', bg: 'bg-amber-100 text-amber-900', text: 'text-amber-700', border: 'border-amber-200', score: 3 },
+  Sad: { emoji: '😔', label: 'Algo triste', bg: 'bg-indigo-100 text-indigo-900', text: 'text-indigo-700', border: 'border-indigo-200', score: 2 },
+  Angry: { emoji: '😡', label: 'Frustrado', bg: 'bg-rose-100 text-rose-900', text: 'text-rose-700', border: 'border-rose-200', score: 1 },
+};
 
 type TaskCategoryFilter = 'Todas' | 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
 type TaskScopeFilter = 'mis_tareas' | 'familia' | 'todas';
@@ -91,7 +102,7 @@ const CATEGORY_CONFIG: {
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-export default function HoyScreen({ usuarios, tareas, metas, currentUser, onToggleTask, onAddTaskClick }: HoyScreenProps) {
+export default function HoyScreen({ usuarios, tareas, metas, diario = [], currentUser, onToggleTask, onAddTaskClick, onGoToMetas, onGoToDiario }: HoyScreenProps) {
   const [activeView, setActiveView] = useState<'lista' | 'calendario'>('lista');
   const [selectedCategory, setSelectedCategory] = useState<TaskCategoryFilter>('Todas');
   const [taskScope, setTaskScope] = useState<TaskScopeFilter>('mis_tareas');
@@ -260,6 +271,100 @@ export default function HoyScreen({ usuarios, tareas, metas, currentUser, onTogg
 
   const categoriesList: TaskCategoryFilter[] = ['Todas', 'Hogar', 'Estudio', 'Salud', 'Personal', 'Otros'];
 
+  // --- WIDGET 1: USER ACTIVE GOALS SUMMARY ---
+  const myActiveGoals = metas.filter(m => {
+    if (m.usuario_id === currentUser?.uid) return true;
+    if (m.tipo === 'familiar') {
+      return !m.miembros_asignados || m.miembros_asignados.length === 0 || m.miembros_asignados.includes(currentUser?.uid);
+    }
+    return false;
+  });
+
+  const activeGoalsCount = myActiveGoals.length;
+  const completedGoalsCount = myActiveGoals.filter(m => {
+    const pct = m.tipo === 'familiar'
+      ? (m.progreso_por_miembro?.find(p => p.usuario_id === currentUser?.uid)?.porcentaje ?? m.porcentaje_semanal ?? 0)
+      : (m.porcentaje_semanal || 0);
+    return pct >= 100;
+  }).length;
+
+  const avgGoalProgress = activeGoalsCount > 0
+    ? Math.round(myActiveGoals.reduce((acc, m) => {
+        const pct = m.tipo === 'familiar'
+          ? (m.progreso_por_miembro?.find(p => p.usuario_id === currentUser?.uid)?.porcentaje ?? m.porcentaje_semanal ?? 0)
+          : (m.porcentaje_semanal || 0);
+        return acc + pct;
+      }, 0) / activeGoalsCount)
+    : 0;
+
+  // --- WIDGET 2: FAMILY MOOD SUMMARY FROM JOURNAL ENTRIES ---
+  const familyVisibleEntries = diario.filter(d => d.visible_familia || d.usuario_id === currentUser?.uid);
+
+  // Map each user to their latest diary entry
+  const familyMemberMoods = usuarios.map(u => {
+    const userEntries = familyVisibleEntries
+      .filter(d => d.usuario_id === u.uid)
+      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    return {
+      usuario: u,
+      latestEntry: userEntries[0] || null
+    };
+  });
+
+  const membersWithMood = familyMemberMoods.filter(item => item.latestEntry);
+
+  let familyClimate = {
+    label: 'Sin publicaciones hoy',
+    emoji: '💛',
+    badgeStyle: 'bg-slate-100 text-slate-800 border-slate-200',
+    description: 'Aún no hay registros de emociones en el diario hoy'
+  };
+
+  if (membersWithMood.length > 0) {
+    const totalScore = membersWithMood.reduce((acc, item) => {
+      const em = item.latestEntry?.emocion || 'Okay';
+      return acc + (EMOTION_CONFIG[em]?.score || 3);
+    }, 0);
+    const avgScore = totalScore / membersWithMood.length;
+
+    if (avgScore >= 4.2) {
+      familyClimate = {
+        label: '¡Súper Positivo y Animado!',
+        emoji: '😄',
+        badgeStyle: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+        description: 'La mayoría de la familia se siente excelente'
+      };
+    } else if (avgScore >= 3.4) {
+      familyClimate = {
+        label: 'Agradable y Armónico',
+        emoji: '🙂',
+        badgeStyle: 'bg-blue-100 text-blue-900 border-blue-300',
+        description: 'Ambiente alegre y en buen equilibrio'
+      };
+    } else if (avgScore >= 2.6) {
+      familyClimate = {
+        label: 'Tranquilo / En Calma',
+        emoji: '😐',
+        badgeStyle: 'bg-amber-100 text-amber-900 border-amber-300',
+        description: 'Día sereno con ánimos estables'
+      };
+    } else if (avgScore >= 1.8) {
+      familyClimate = {
+        label: 'Sensible / Requiere Apoyo',
+        emoji: '😔',
+        badgeStyle: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+        description: 'Algunos miembros necesitan un momento de cariño'
+      };
+    } else {
+      familyClimate = {
+        label: 'Día Desafiante',
+        emoji: '😡',
+        badgeStyle: 'bg-rose-100 text-rose-900 border-rose-300',
+        description: 'Tensión o frustración reportada en el diario'
+      };
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* Top Header Section */}
@@ -367,6 +472,241 @@ export default function HoyScreen({ usuarios, tareas, metas, currentUser, onTogg
             "El amor de la familia es el mayor regalo de la vida y el mejor legado que podemos construir juntos."
           </p>
           <p className="font-sans text-[9px] text-brand-primary uppercase tracking-widest font-extrabold">PENSAMIENTO DEL DÍA</p>
+        </div>
+      </section>
+
+      {/* WIDGETS SECTION: METAS ACTIVAS & ESTADO DE ÁNIMO FAMILIAR */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* CARD 1: METAS ACTIVAS DEL USUARIO */}
+        <div className="bg-white rounded-[28px] p-5 border border-indigo-100/80 shadow-md shadow-indigo-100/20 flex flex-col justify-between space-y-4">
+          <div className="space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+                  <span className="material-symbols-outlined text-xl">ads_click</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-sans text-sm font-extrabold text-gray-900">
+                      Mis Metas Activas
+                    </h3>
+                    <span className="bg-indigo-100 text-indigo-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                      {activeGoalsCount} {activeGoalsCount === 1 ? 'meta' : 'metas'}
+                    </span>
+                  </div>
+                  <p className="font-sans text-[11px] text-gray-500">
+                    Avance medio: <strong className="text-indigo-700">{avgGoalProgress}%</strong> ({completedGoalsCount} al 100%)
+                  </p>
+                </div>
+              </div>
+
+              {onGoToMetas && (
+                <button
+                  onClick={onGoToMetas}
+                  className="text-indigo-600 hover:text-indigo-800 text-xs font-extrabold flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  Ver todas
+                  <span className="material-symbols-outlined text-sm">chevron_right</span>
+                </button>
+              )}
+            </div>
+
+            {/* Overall Progress Bar */}
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${avgGoalProgress}%` }}
+              />
+            </div>
+
+            {/* Goals List Preview */}
+            {myActiveGoals.length === 0 ? (
+              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 text-center space-y-2">
+                <span className="material-symbols-outlined text-gray-400 text-2xl">flag</span>
+                <p className="text-xs text-gray-500 font-medium">No tienes metas activas registradas actualmente.</p>
+                {onGoToMetas && (
+                  <button
+                    onClick={onGoToMetas}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all cursor-pointer shadow-xs"
+                  >
+                    <span className="material-symbols-outlined text-xs">add</span>
+                    Crear mi primera meta
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                {myActiveGoals.slice(0, 3).map((goal) => {
+                  const goalPct = goal.tipo === 'familiar'
+                    ? (goal.progreso_por_miembro?.find(p => p.usuario_id === currentUser?.uid)?.porcentaje ?? goal.porcentaje_semanal ?? 0)
+                    : (goal.porcentaje_semanal || 0);
+
+                  const categoryIcons: Record<string, string> = {
+                    Salud: 'health_and_safety',
+                    Estudio: 'school',
+                    Finanzas: 'payments',
+                    Hogar: 'home',
+                    Personal: 'person'
+                  };
+
+                  return (
+                    <div
+                      key={goal.meta_id}
+                      onClick={onGoToMetas}
+                      className="p-3 bg-slate-50/80 hover:bg-indigo-50/50 border border-slate-200/80 hover:border-indigo-200 rounded-2xl transition-all cursor-pointer space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="material-symbols-outlined text-indigo-600 text-base shrink-0">
+                            {categoryIcons[goal.categoria] || 'flag'}
+                          </span>
+                          <span className="font-sans text-xs font-bold text-gray-900 truncate">
+                            {goal.titulo}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black text-indigo-700 shrink-0">
+                          {goalPct}%
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md font-bold text-gray-700">
+                            {goal.frecuencia_objetivo}x / {goal.unidad_frecuencia}
+                          </span>
+                          {goal.recompensa_activa && (
+                            <span className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded-md font-extrabold flex items-center gap-0.5">
+                              🎁 Premio
+                            </span>
+                          )}
+                          {goal.consecuencias_activas && (
+                            <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md font-extrabold flex items-center gap-0.5">
+                              ⚠️ Consecuencia
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[9px] uppercase tracking-wider font-extrabold text-indigo-900">
+                          {goal.tipo === 'familiar' ? 'Familiar' : 'Individual'}
+                        </span>
+                      </div>
+
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            goalPct >= 100 ? 'bg-emerald-500' : goalPct >= 50 ? 'bg-indigo-600' : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${Math.min(100, goalPct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CARD 2: ESTADO DE ÁNIMO DE LA FAMILIA */}
+        <div className="bg-white rounded-[28px] p-5 border border-indigo-100/80 shadow-md shadow-indigo-100/20 flex flex-col justify-between space-y-4">
+          <div className="space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-200">
+                  <span className="material-symbols-outlined text-xl">mood</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-sans text-sm font-extrabold text-gray-900">
+                      Estado de Ánimo Familiar
+                    </h3>
+                  </div>
+                  <p className="font-sans text-[11px] text-gray-500">
+                    Basado en las últimas publicaciones del diario
+                  </p>
+                </div>
+              </div>
+
+              {onGoToDiario && (
+                <button
+                  onClick={onGoToDiario}
+                  className="text-amber-600 hover:text-amber-800 text-xs font-extrabold flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  Abrir Diario
+                  <span className="material-symbols-outlined text-sm">chevron_right</span>
+                </button>
+              )}
+            </div>
+
+            {/* Global Climate Badge */}
+            <div className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 ${familyClimate.badgeStyle}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{familyClimate.emoji}</span>
+                <div>
+                  <span className="text-xs font-extrabold block">
+                    {familyClimate.label}
+                  </span>
+                  <span className="text-[10px] opacity-80 block">
+                    {familyClimate.description}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/60 text-gray-800 shadow-2xs">
+                {membersWithMood.length} / {usuarios.length} activos
+              </span>
+            </div>
+
+            {/* Member Moods Breakdown */}
+            <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+              {familyMemberMoods.map(({ usuario, latestEntry }) => {
+                const emotionKey = latestEntry?.emocion || 'Okay';
+                const emotionConfig = EMOTION_CONFIG[emotionKey] || EMOTION_CONFIG.Okay;
+                const isCurrentUser = usuario.uid === currentUser?.uid;
+
+                return (
+                  <div
+                    key={usuario.uid}
+                    onClick={onGoToDiario}
+                    className="p-2.5 bg-slate-50/80 hover:bg-amber-50/40 border border-slate-200/80 hover:border-amber-200 rounded-2xl transition-all cursor-pointer flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={usuario.avatar_url}
+                        alt={usuario.nombre}
+                        className="w-8 h-8 rounded-full object-cover border border-white shadow-2xs shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-sans text-xs font-bold text-gray-900 truncate">
+                            {usuario.nombre} {isCurrentUser ? '(Tú)' : ''}
+                          </span>
+                        </div>
+                        {latestEntry ? (
+                          <p className="text-[10px] text-gray-500 truncate max-w-[200px] italic">
+                            "{latestEntry.texto}"
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-gray-400">Sin entrada aún</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {latestEntry ? (
+                      <span className={`px-2 py-1 rounded-xl border text-[11px] font-extrabold flex items-center gap-1 shrink-0 ${emotionConfig.bg} ${emotionConfig.border}`}>
+                        <span>{emotionConfig.emoji}</span>
+                        <span>{emotionConfig.label}</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-xl border border-slate-200 bg-white text-gray-400 text-[10px] font-bold shrink-0">
+                        Pendiente
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </section>
 
