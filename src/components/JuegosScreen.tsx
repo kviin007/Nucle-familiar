@@ -19,6 +19,7 @@ import { triviaQuestions } from '../data/triviaQuestions';
 // Import New Multiplayer Games
 import GameLobby from './games/GameLobby';
 import ChessGame from './games/ChessGame';
+import ChessVsAiGame from './games/ChessVsAiGame';
 import GuessWhoGame from './games/GuessWhoGame';
 import BingoGame from './games/BingoGame';
 import BattleshipGame from './games/BattleshipGame';
@@ -29,11 +30,12 @@ interface JuegosScreenProps {
   onStateUpdate: () => void;
 }
 
-type GameType = 'trivia' | 'pasos' | 'memoria' | 'chess' | 'guesswho' | 'bingo' | 'battleship' | null;
+type GameType = 'trivia' | 'pasos' | 'memoria' | 'chess' | 'chess_ai' | 'guesswho' | 'bingo' | 'battleship' | null;
 
 export default function JuegosScreen({ currentUser, usuarios, onStateUpdate }: JuegosScreenProps) {
   const [activeGame, setActiveGame] = useState<GameType>(null);
   const [activeLobbyGame, setActiveLobbyGame] = useState<'chess' | 'guesswho' | 'bingo' | 'battleship' | null>(null);
+  const [modeFilter, setModeFilter] = useState<'all' | 'individual' | 'family'>('all');
 
   const [selectedPartidaId, setSelectedPartidaId] = useState<string | null>(null);
   const [selectedPartidaData, setSelectedPartidaData] = useState<any>(null);
@@ -370,10 +372,11 @@ export default function JuegosScreen({ currentUser, usuarios, onStateUpdate }: J
              : activeGame === 'pasos' ? 'Reto de Pasos Colectivo' 
              : activeGame === 'memoria' ? 'Memoria del Núcleo' 
              : activeGame === 'chess' ? 'Ajedrez Familiar'
+             : activeGame === 'chess_ai' ? 'Ajedrez vs La Máquina'
              : activeGame === 'guesswho' ? 'Adivina Quién'
              : activeGame === 'bingo' ? 'Bingo Familiar'
              : activeGame === 'battleship' ? 'Batalla Naval'
-             : '¡Juegos Familiares en Tiempo Real!'}
+             : '¡Juegos Familiares y vs La Máquina!'}
           </h2>
           <p className="font-sans text-sm text-gray-500 font-medium">
             Estilo Plato App: Desafíos individuales y partidas multijugador sincronizadas en vivo.
@@ -428,6 +431,16 @@ export default function JuegosScreen({ currentUser, usuarios, onStateUpdate }: J
         />
       )}
 
+      {/* ACTIVE SINGLE PLAYER / VS AI MATCHES */}
+      {activeGame === 'chess_ai' && (
+        <ChessVsAiGame
+          currentUser={currentUser}
+          onExit={handleExitMatch}
+          onAwardPoints={awardPoints}
+          onSaveProgress={saveProgress}
+        />
+      )}
+
       {/* ACTIVE MULTIPLAYER MATCHES */}
       {selectedPartidaId && activeGame === 'chess' && (
         <ChessGame
@@ -475,206 +488,295 @@ export default function JuegosScreen({ currentUser, usuarios, onStateUpdate }: J
 
       {/* HUB CATALOG MENU */}
       {!activeGame && !activeLobbyGame && !selectedPartidaId && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          
-          {/* Card 1: Ajedrez (New Multiplayer) */}
-          <div className="bg-white rounded-[32px] border border-amber-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-amber-950 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                2 Jugadores
-              </span>
-              <span className="px-3 py-1 rounded-full bg-white/20 text-amber-200 font-sans text-[10px] font-bold uppercase tracking-wider">
-                Tiempo Real
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">♟️</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Ajedrez Familiar</h3>
-              <p className="font-sans text-xs text-amber-100/80 line-clamp-2 leading-relaxed">
-                Estrategia por turnos con explicación de movimientos para niños.
-              </p>
-              <button 
-                onClick={() => setActiveLobbyGame('chess')}
-                className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+        <div className="space-y-6">
+          {/* Mode Selector Navigation Tabs */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-2.5 rounded-3xl border border-slate-100 shadow-sm gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setModeFilter('all')}
+                className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                  modeFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-md'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
               >
-                <Users size={14} />
-                Sala de Espera
+                <span>🌟 Todos los Juegos</span>
+              </button>
+
+              <button
+                onClick={() => setModeFilter('family')}
+                className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                  modeFilter === 'family'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Users size={16} />
+                <span>En Familia (Multijugador)</span>
+              </button>
+
+              <button
+                onClick={() => setModeFilter('individual')}
+                className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                  modeFilter === 'individual'
+                    ? 'bg-brand-primary text-white shadow-md'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Play size={16} />
+                <span>Individual / vs La Máquina</span>
               </button>
             </div>
+
+            <span className="text-[11px] text-gray-400 font-semibold px-2">
+              {modeFilter === 'all' ? '8 Modos Disponibles' : modeFilter === 'family' ? 'Multijugador En Vivo' : 'Solitario & IA'}
+            </span>
           </div>
 
-          {/* Card 2: Adivina Quién (New Multiplayer) */}
-          <div className="bg-white rounded-[32px] border border-purple-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-950 to-indigo-950 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              <span className="px-2.5 py-1 rounded-full bg-purple-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                2 Jugadores
-              </span>
-              <span className="px-3 py-1 rounded-full bg-white/20 text-purple-200 font-sans text-[10px] font-bold uppercase tracking-wider">
-                Tiempo Real
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">🎭</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Adivina Quién</h3>
-              <p className="font-sans text-xs text-purple-100/80 line-clamp-2 leading-relaxed">
-                Adivina el personaje misterioso con fotos de tu propio núcleo familiar.
-              </p>
-              <button 
-                onClick={() => setActiveLobbyGame('guesswho')}
-                className="w-full bg-purple-400 hover:bg-purple-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Users size={14} />
-                Sala de Espera
-              </button>
-            </div>
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            
+            {/* Card 0: Ajedrez vs La Máquina (Single player / AI Duolingo style) */}
+            {(modeFilter === 'all' || modeFilter === 'individual') && (
+              <div className="bg-white rounded-[32px] border border-amber-200 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 ring-2 ring-amber-400/40">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-amber-950 opacity-95" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow animate-pulse">
+                    ⚡ 1 Jugador vs IA
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-amber-200 font-sans text-[10px] font-bold uppercase tracking-wider">
+                    Estilo Duolingo
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">🤖♟️</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Ajedrez vs La Máquina</h3>
+                  <p className="font-sans text-xs text-amber-100/90 line-clamp-2 leading-relaxed">
+                    Compite contra personajes IA dinámicos (Oscar, Bea, Vikram y Lin) con pistas y comentarios en vivo.
+                  </p>
+                  <button 
+                    onClick={() => setActiveGame('chess_ai')}
+                    className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Play size={14} />
+                    Jugar vs La Máquina
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Card 3: Bingo (New Multiplayer) */}
-          <div className="bg-white rounded-[32px] border border-emerald-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 to-teal-950 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              <span className="px-2.5 py-1 rounded-full bg-emerald-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                2 a 6 Jugadores
-              </span>
-              <span className="px-3 py-1 rounded-full bg-white/20 text-emerald-200 font-sans text-[10px] font-bold uppercase tracking-wider">
-                Familiar
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">🎱</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Bingo Familiar</h3>
-              <p className="font-sans text-xs text-emerald-100/80 line-clamp-2 leading-relaxed">
-                Cantada de balotas sincronizada para reunir a toda la familia.
-              </p>
-              <button 
-                onClick={() => setActiveLobbyGame('bingo')}
-                className="w-full bg-emerald-400 hover:bg-emerald-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Users size={14} />
-                Sala de Espera
-              </button>
-            </div>
-          </div>
+            {/* Card 1: Ajedrez (New Multiplayer) */}
+            {(modeFilter === 'all' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-amber-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-amber-950 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    2 Jugadores
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-amber-200 font-sans text-[10px] font-bold uppercase tracking-wider">
+                    Tiempo Real
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">♟️</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Ajedrez Familiar</h3>
+                  <p className="font-sans text-xs text-amber-100/80 line-clamp-2 leading-relaxed">
+                    Estrategia por turnos con explicación de movimientos para niños en tu familia.
+                  </p>
+                  <button 
+                    onClick={() => setActiveLobbyGame('chess')}
+                    className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Users size={14} />
+                    Sala de Espera
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Card 4: Batalla Naval (New Multiplayer) */}
-          <div className="bg-white rounded-[32px] border border-cyan-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-950 to-slate-950 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              <span className="px-2.5 py-1 rounded-full bg-cyan-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                2 Jugadores
-              </span>
-              <span className="px-3 py-1 rounded-full bg-white/20 text-cyan-200 font-sans text-[10px] font-bold uppercase tracking-wider">
-                Tiempo Real
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">🚢</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Batalla Naval</h3>
-              <p className="font-sans text-xs text-cyan-100/80 line-clamp-2 leading-relaxed">
-                Posiciona tu flota naviera e impacta los barcos enemigos en la cuadrícula 10x10.
-              </p>
-              <button 
-                onClick={() => setActiveLobbyGame('battleship')}
-                className="w-full bg-cyan-400 hover:bg-cyan-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Users size={14} />
-                Sala de Espera
-              </button>
-            </div>
-          </div>
+            {/* Card 2: Adivina Quién (New Multiplayer) */}
+            {(modeFilter === 'all' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-purple-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-950 to-indigo-950 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  <span className="px-2.5 py-1 rounded-full bg-purple-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    2 Jugadores
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-purple-200 font-sans text-[10px] font-bold uppercase tracking-wider">
+                    Tiempo Real
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">🎭</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Adivina Quién</h3>
+                  <p className="font-sans text-xs text-purple-100/80 line-clamp-2 leading-relaxed">
+                    Adivina el personaje misterioso con fotos de tu propio núcleo familiar.
+                  </p>
+                  <button 
+                    onClick={() => setActiveLobbyGame('guesswho')}
+                    className="w-full bg-purple-400 hover:bg-purple-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Users size={14} />
+                    Sala de Espera
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Card 5: Trivia */}
-          <div className="bg-white rounded-[32px] border border-indigo-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 to-slate-900 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              {progress['trivia'] ? (
-                <span className="px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                  ★ {progress['trivia'].puntaje} Pts
-                </span>
-              ) : <div />}
-              <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
-                Trivia
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">❓</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Trivia Familiar</h3>
-              <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
-                ¿Quién conoce mejor las historias y anécdotas de la familia?
-              </p>
-              <button 
-                onClick={() => {
-                  resetTrivia();
-                  setActiveGame('trivia');
-                }}
-                className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Play size={14} />
-                Jugar Individual
-              </button>
-            </div>
-          </div>
+            {/* Card 3: Bingo (New Multiplayer) */}
+            {(modeFilter === 'all' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-emerald-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 to-teal-950 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    2 a 6 Jugadores
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-emerald-200 font-sans text-[10px] font-bold uppercase tracking-wider">
+                    Familiar
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">🎱</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Bingo Familiar</h3>
+                  <p className="font-sans text-xs text-emerald-100/80 line-clamp-2 leading-relaxed">
+                    Cantada de balotas sincronizada para reunir a toda la familia.
+                  </p>
+                  <button 
+                    onClick={() => setActiveLobbyGame('bingo')}
+                    className="w-full bg-emerald-400 hover:bg-emerald-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Users size={14} />
+                    Sala de Espera
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Card 6: Reto de Pasos */}
-          <div className="bg-white rounded-[32px] border border-rose-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-rose-950 to-pink-950 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              {progress['pasos'] ? (
-                <span className="px-2.5 py-1 rounded-full bg-pink-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                  👣 {progress['pasos'].puntaje.toLocaleString()} pasos
-                </span>
-              ) : <div />}
-              <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
-                Pasos
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">👣</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Reto de Pasos</h3>
-              <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
-                Sincronicen sus podómetros y acumulen pasos juntos hacia la meta.
-              </p>
-              <button 
-                onClick={() => setActiveGame('pasos')}
-                className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Footprints size={14} />
-                Ver Pasos
-              </button>
-            </div>
-          </div>
+            {/* Card 4: Batalla Naval (New Multiplayer) */}
+            {(modeFilter === 'all' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-cyan-100 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-950 to-slate-950 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  <span className="px-2.5 py-1 rounded-full bg-cyan-400 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                    2 Jugadores
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-cyan-200 font-sans text-[10px] font-bold uppercase tracking-wider">
+                    Tiempo Real
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">🚢</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Batalla Naval</h3>
+                  <p className="font-sans text-xs text-cyan-100/80 line-clamp-2 leading-relaxed">
+                    Posiciona tu flota naviera e impacta los barcos enemigos en la cuadrícula 10x10.
+                  </p>
+                  <button 
+                    onClick={() => setActiveLobbyGame('battleship')}
+                    className="w-full bg-cyan-400 hover:bg-cyan-500 text-slate-950 py-3 rounded-full font-sans text-xs font-black shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Users size={14} />
+                    Sala de Espera
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Card 7: Memoria */}
-          <div className="bg-white rounded-[32px] border border-purple-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-950 to-slate-900 opacity-90" />
-            <div className="z-20 p-4 flex justify-between items-start">
-              {progress['memoria']?.mejor_tiempo ? (
-                <span className="px-2.5 py-1 rounded-full bg-indigo-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
-                  ⏱️ {formatTimer(progress['memoria'].mejor_tiempo)}
-                </span>
-              ) : <div />}
-              <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
-                Memoria
-              </span>
-            </div>
-            <div className="z-20 p-5 mt-auto text-left space-y-3">
-              <span className="text-4xl block">🧠</span>
-              <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Memoria del Núcleo</h3>
-              <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
-                Encuentra pares de iconos representativos del hogar.
-              </p>
-              <button 
-                onClick={() => setActiveGame('memoria')}
-                className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Layers size={14} />
-                Jugar Memoria
-              </button>
-            </div>
-          </div>
+            {/* Card 5: Trivia */}
+            {(modeFilter === 'all' || modeFilter === 'individual' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-indigo-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 to-slate-900 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  {progress['trivia'] ? (
+                    <span className="px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                      ★ {progress['trivia'].puntaje} Pts
+                    </span>
+                  ) : <div />}
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
+                    Trivia
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">❓</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Trivia Familiar</h3>
+                  <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
+                    ¿Quién conoce mejor las historias y anécdotas de la familia?
+                  </p>
+                  <button 
+                    onClick={() => {
+                      resetTrivia();
+                      setActiveGame('trivia');
+                    }}
+                    className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Play size={14} />
+                    Jugar Trivia
+                  </button>
+                </div>
+              </div>
+            )}
 
+            {/* Card 6: Reto de Pasos */}
+            {(modeFilter === 'all' || modeFilter === 'family') && (
+              <div className="bg-white rounded-[32px] border border-rose-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-rose-950 to-pink-950 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  {progress['pasos'] ? (
+                    <span className="px-2.5 py-1 rounded-full bg-pink-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                      👣 {progress['pasos'].puntaje.toLocaleString()} pasos
+                    </span>
+                  ) : <div />}
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
+                    Pasos
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">👣</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Reto de Pasos</h3>
+                  <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
+                    Sincronicen sus podómetros y acumulen pasos juntos hacia la meta.
+                  </p>
+                  <button 
+                    onClick={() => setActiveGame('pasos')}
+                    className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Footprints size={14} />
+                    Ver Pasos
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Card 7: Memoria */}
+            {(modeFilter === 'all' || modeFilter === 'individual') && (
+              <div className="bg-white rounded-[32px] border border-purple-50/60 shadow-xl overflow-hidden flex flex-col justify-between h-[360px] relative group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-950 to-slate-900 opacity-90" />
+                <div className="z-20 p-4 flex justify-between items-start">
+                  {progress['memoria']?.mejor_tiempo ? (
+                    <span className="px-2.5 py-1 rounded-full bg-indigo-500 text-white font-sans text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                      ⏱️ {formatTimer(progress['memoria'].mejor_tiempo)}
+                    </span>
+                  ) : <div />}
+                  <span className="px-3 py-1 rounded-full bg-white/20 text-white font-sans text-[10px] font-bold shadow-sm uppercase tracking-wider">
+                    Memoria
+                  </span>
+                </div>
+                <div className="z-20 p-5 mt-auto text-left space-y-3">
+                  <span className="text-4xl block">🧠</span>
+                  <h3 className="font-sans text-xl font-extrabold text-white tracking-tight">Memoria del Núcleo</h3>
+                  <p className="font-sans text-xs text-gray-300 line-clamp-2 leading-relaxed">
+                    Encuentra pares de iconos representativos del hogar.
+                  </p>
+                  <button 
+                    onClick={() => setActiveGame('memoria')}
+                    className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Layers size={14} />
+                    Jugar Memoria
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       )}
 
