@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Meta, Usuario, ConsecuenciaPlantilla, ConsecuenciaPendiente } from '../types';
+import { Meta, Usuario, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from '../types';
 
 interface MetasScreenProps {
   metas: Meta[];
   usuarios: Usuario[];
   currentUser: any;
   consecuenciasPlantillas?: ConsecuenciaPlantilla[];
+  recompensasPlantillas?: RecompensaPlantilla[];
   consecuenciasPendientes?: ConsecuenciaPendiente[];
   onAddGoal: (goalData: Partial<Meta>) => void;
   onCreateConsequenceTemplate?: (template: Partial<ConsecuenciaPlantilla>) => Promise<void>;
+  onCreateRewardTemplate?: (template: Partial<RecompensaPlantilla>) => Promise<void>;
   onResolvePendingConsequence?: (pendiente_id: string, action: 'assign' | 'forgive') => Promise<void>;
   onEvaluateCompliance?: () => void;
 }
@@ -28,9 +30,11 @@ export default function MetasScreen({
   usuarios,
   currentUser,
   consecuenciasPlantillas = [],
+  recompensasPlantillas = [],
   consecuenciasPendientes = [],
   onAddGoal,
   onCreateConsequenceTemplate,
+  onCreateRewardTemplate,
   onResolvePendingConsequence,
   onEvaluateCompliance
 }: MetasScreenProps) {
@@ -60,6 +64,18 @@ export default function MetasScreen({
   const [generarTareas, setGenerarTareas] = useState<boolean>(true);
   const [diasPreferidos, setDiasPreferidos] = useState<number[]>([1, 2, 3, 4, 5]);
   const [horaSugerida, setHoraSugerida] = useState<string>('09:00');
+
+  // Rewards toggle
+  const [recompensaActiva, setRecompensaActiva] = useState<boolean>(false);
+  const [recompensaId, setRecompensaId] = useState<string>('');
+
+  // Create Reward Form State
+  const [showRewModal, setShowRewModal] = useState<boolean>(false);
+  const [rewTitulo, setRewTitulo] = useState<string>('');
+  const [rewDesc, setRewDesc] = useState<string>('');
+  const [rewTipo, setRewTipo] = useState<'generica' | 'desbloqueo_bot' | 'tiempo_extra_juegos'>('desbloqueo_bot');
+  const [rewBotId, setRewBotId] = useState<'oscar' | 'bea' | 'vikram' | 'lin'>('vikram');
+  const [rewMinutos, setRewMinutos] = useState<number>(30);
 
   // Consequences toggle
   const [consecuenciasActivas, setConsecuenciasActivas] = useState<boolean>(false);
@@ -147,12 +163,32 @@ export default function MetasScreen({
       consecuencias_activas: consecuenciasActivas,
       consecuencia_id: consecuenciaId,
       requiere_aprobacion_adulto: requiereAprobacionAdulto,
+      recompensa_activa: recompensaActiva,
+      recompensa_id: recompensaId,
       porcentaje_semanal: 0,
       visible_familia: true
     });
 
     setTitulo('');
     setShowModal(false);
+  };
+
+  const handleCreateRewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rewTitulo.trim() || !onCreateRewardTemplate) return;
+
+    await onCreateRewardTemplate({
+      familia_id: currentFamilyId,
+      titulo: rewTitulo.trim(),
+      descripcion: rewDesc.trim(),
+      tipo: rewTipo,
+      bot_id_desbloqueado: rewTipo === 'desbloqueo_bot' ? rewBotId : undefined,
+      minutos_extra: rewTipo === 'tiempo_extra_juegos' ? Number(rewMinutos) : undefined
+    });
+
+    setRewTitulo('');
+    setRewDesc('');
+    setShowRewModal(false);
   };
 
   const handleCreateConsSubmit = async (e: React.FormEvent) => {
@@ -777,6 +813,54 @@ export default function MetasScreen({
                 )}
               </div>
 
+              {/* Rewards System */}
+              <div className="space-y-3 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950">Activar Recompensa al Cumplir Meta</h4>
+                    <p className="text-[11px] text-emerald-800">Desbloquea contenido de juegos o privilegios especiales al alcanzar el 100%.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={recompensaActiva}
+                    onChange={(e) => setRecompensaActiva(e.target.checked)}
+                    className="w-5 h-5 text-emerald-600 rounded-md focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                {recompensaActiva && (
+                  <div className="space-y-3 pt-2 border-t border-emerald-200/60">
+                    <div>
+                      <label className="block text-[10px] font-bold text-emerald-900 uppercase mb-1">
+                        Seleccionar Recompensa
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={recompensaId}
+                          onChange={(e) => setRecompensaId(e.target.value)}
+                          className="flex-1 bg-white border border-emerald-200 rounded-xl p-2 text-xs font-bold text-gray-800 outline-none"
+                        >
+                          <option value="">-- Seleccionar recompensa --</option>
+                          {recompensasPlantillas.map((rp) => (
+                            <option key={rp.recompensa_id} value={rp.recompensa_id}>
+                              🎁 {rp.titulo} {rp.tipo === 'desbloqueo_bot' ? `(Bot: ${rp.bot_id_desbloqueado?.toUpperCase()})` : rp.tipo === 'tiempo_extra_juegos' ? `(+${rp.minutos_extra} min juegos)` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowRewModal(true)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-xs">add</span>
+                          Nueva
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Consequences System */}
               <div className="space-y-3 bg-amber-50/50 p-4 rounded-2xl border border-amber-200">
                 <div className="flex items-center justify-between">
@@ -976,6 +1060,113 @@ export default function MetasScreen({
             >
               Cerrar
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE REWARD TEMPLATE MODAL */}
+      {showRewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-xs" onClick={() => setShowRewModal(false)}></div>
+          <div className="relative bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-emerald-100 animate-scale-up space-y-4">
+            <h3 className="font-sans text-base font-bold text-emerald-950 flex items-center gap-2">
+              <span className="material-symbols-outlined text-emerald-600">military_tech</span>
+              Nueva Recompensa
+            </h3>
+
+            <form onSubmit={handleCreateRewSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  Título de la Recompensa
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={rewTitulo}
+                  onChange={(e) => setRewTitulo(e.target.value)}
+                  placeholder="ej. Desbloquear Bot Lin 👑"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-gray-800 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  Tipo de Recompensa
+                </label>
+                <select
+                  value={rewTipo}
+                  onChange={(e) => setRewTipo(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-gray-800 outline-none"
+                >
+                  <option value="desbloqueo_bot">🤖 Desbloqueo de Bot de IA</option>
+                  <option value="tiempo_extra_juegos">⏱️ Tiempo Extra de Juegos</option>
+                  <option value="generica">🎁 Premio Genérico / Especial</option>
+                </select>
+              </div>
+
+              {rewTipo === 'desbloqueo_bot' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                    Bot a Desbloquear
+                  </label>
+                  <select
+                    value={rewBotId}
+                    onChange={(e) => setRewBotId(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-gray-800 outline-none"
+                  >
+                    <option value="vikram">Vikram 🧙‍♂️ (Nivel Avanzado)</option>
+                    <option value="lin">Lin 👑 (Nivel Maestro)</option>
+                    <option value="bea">Bea 🚀 (Disponible por defecto)</option>
+                    <option value="oscar">Óscar 🎯 (Disponible por defecto)</option>
+                  </select>
+                </div>
+              )}
+
+              {rewTipo === 'tiempo_extra_juegos' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                    Minutos Extra de Juegos
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={120}
+                    value={rewMinutos}
+                    onChange={(e) => setRewMinutos(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-gray-800 outline-none"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  Descripción (Opcional)
+                </label>
+                <textarea
+                  value={rewDesc}
+                  onChange={(e) => setRewDesc(e.target.value)}
+                  placeholder="Detalles adicionales para celebrar el cumplimiento..."
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-gray-800 outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRewModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
+                >
+                  Guardar Recompensa
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

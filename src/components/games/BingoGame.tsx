@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Usuario } from '../../types';
 import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
-import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck, Clock } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck, Users, Clock, AlertCircle } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface BingoGameProps {
   partidaId: string;
@@ -14,10 +14,21 @@ interface BingoGameProps {
   onAwardPoints: (points: number) => void;
 }
 
-export default function BingoGame({ partidaId, currentUser, usuarios, partidaData, onExit, onAwardPoints }: BingoGameProps) {
+export default function BingoGame({
+  partidaId,
+  currentUser,
+  usuarios,
+  partidaData,
+  onExit,
+  onAwardPoints
+}: BingoGameProps) {
   const [localPartida, setLocalPartida] = useState<any>(partidaData);
   const [myCard, setMyCard] = useState<number[][]>([]);
   const [markedCells, setMarkedCells] = useState<boolean[][]>([]);
+  const [pointsAwarded, setPointsAwarded] = useState<boolean>(false);
+
+  const isCoopMode = localPartida?.modo === 'cooperativo';
+  const COOP_LIMIT = 40;
 
   // Real-time Firestore sync
   useEffect(() => {
@@ -31,8 +42,11 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
     return () => unsub();
   }, [partidaId]);
 
-  // Generate unique 5x5 card for player on initial mount
-  useEffect(() => {
+  const players: string[] = localPartida?.jugadores || [];
+  const isHost = players[0] === currentUser.uid;
+
+  // Generate 5x5 card
+  const generateNewCardMatrix = (): number[][] => {
     const card: number[][] = [];
     const ranges = [
       [1, 15],   // B
@@ -58,22 +72,48 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
       }
       card.push(rowArr);
     }
+    return card;
+  };
 
-    setMyCard(card);
+  // Initialization logic for Competitive vs Cooperative
+  useEffect(() => {
+    if (isCoopMode) {
+      // In Coop Mode: Use shared card from Firestore, or host generates & initializes it
+      if (!localPartida?.carton_compartido && isHost && firestore) {
+        const newSharedCard = generateNewCardMatrix();
+        const initialMarked = Array(5).fill(null).map((_, r) =>
+          Array(5).fill(null).map((_, c) => (r === 2 && c === 2))
+        );
+        updateDoc(doc(firestore, "partidas", partidaId), {
+          carton_compartido: newSharedCard,
+          celdas_marcadas: initialMarked,
+          ultima_actualizacion: serverTimestamp()
+        });
+      }
+    } else {
+      // In Competitive Mode: Generate local card for current player
+      const card = generateNewCardMatrix();
+      setMyCard(card);
+      const initialMarked = Array(5).fill(null).map((_, r) =>
+        Array(5).fill(null).map((_, c) => (r === 2 && c === 2))
+      );
+      setMarkedCells(initialMarked);
+    }
+  }, [isCoopMode, isHost, partidaId, localPartida?.carton_compartido]);
 
-    const initialMarked = Array(5).fill(null).map((_, r) =>
-      Array(5).fill(null).map((_, c) => (r === 2 && c === 2))
-    );
-    setMarkedCells(initialMarked);
-  }, []);
+  // Derive displayed card & marked matrix
+  const activeCard: number[][] = isCoopMode
+    ? (localPartida?.carton_compartido || Array(5).fill(Array(5).fill(0)))
+    : myCard;
+
+  const activeMarked: boolean[][] = isCoopMode
+    ? (localPartida?.celdas_marcadas || Array(5).fill(Array(5).fill(false)))
+    : markedCells;
 
   const calledNumbers: number[] = localPartida?.numeros_cantados || [];
   const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
 
-  const players: string[] = localPartida?.jugadores || [];
-  const isHost = players[0] === currentUser.uid;
-
-  // Helper to safely extract milliseconds from Firestore timestamp or JS Date
+  // Inactive host helper
   const getLastUpdateMillis = (partida: any) => {
     const ts = partida?.ultima_actualizacion || partida?.creado_en;
     if (!ts) return null;
@@ -106,7 +146,7 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
   const isHostInactive = secondsInactive >= TIMEOUT_SECONDS;
   const canCallNextNumber = isHost || isHostInactive;
 
-  // Host (or active player if host >=20s inactive) calls next number
+  // Host (or active player) calls next number
   const handleCallNextNumber = async () => {
     if (localPartida?.estado === 'finalizada' || !canCallNextNumber) return;
 
@@ -131,54 +171,96 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
   };
 
   // Toggle cell mark
-  const toggleCellMark = (r: number, c: number) => {
-    const num = myCard[r][c];
-    if (num === 0) return; // free center
+  const toggleCellMark = async (r: number, c: number) => {
+    const num = activeCard[r][c];
+    if (num === 0) return; // Free center space
 
-    // Check if called
+    // Must be called to mark
     if (!calledNumbers.includes(num)) return;
 
-    setMarkedCells(prev => {
-      const copy = prev.map(row => [...row]);
-      copy[r][c] = !copy[r][c];
-      return copy;
-    });
+    if (isCoopMode) {
+      // In Coop mode, sync cell toggle to Firestore so everyone sees it!
+      if (!firestore) return;
+      const currentMarked = localPartida?.celdas_marcadas || Array(5).fill(Array(5).fill(false));
+      const newMarked = currentMarked.map((rowArr: boolean[], rowIdx: number) =>
+        rowArr.map((val: boolean, colIdx: number) => {
+          if (rowIdx === r && colIdx === c) return !val;
+          return val;
+        })
+      );
+
+      await updateDoc(doc(firestore, "partidas", partidaId), {
+        celdas_marcadas: newMarked,
+        ultima_actualizacion: serverTimestamp()
+      });
+    } else {
+      // In Competitive mode, update local state
+      setMarkedCells(prev => {
+        const copy = prev.map(row => [...row]);
+        copy[r][c] = !copy[r][c];
+        return copy;
+      });
+    }
   };
 
   // Check BINGO condition
   const handleCheckBingo = async () => {
     if (localPartida?.estado === 'finalizada') return;
 
-    // Verify row, col, or diagonal
     let hasBingo = false;
 
     // Check rows
     for (let r = 0; r < 5; r++) {
-      if (markedCells[r].every(val => val)) hasBingo = true;
+      if (activeMarked[r]?.every(val => val)) hasBingo = true;
     }
 
     // Check cols
     for (let c = 0; c < 5; c++) {
-      if (markedCells.every(row => row[c])) hasBingo = true;
+      if (activeMarked.every(row => row[c])) hasBingo = true;
     }
 
     // Check diagonals
-    if ([0,1,2,3,4].every(i => markedCells[i][i])) hasBingo = true;
-    if ([0,1,2,3,4].every(i => markedCells[i][4 - i])) hasBingo = true;
+    if ([0,1,2,3,4].every(i => activeMarked[i]?.[i])) hasBingo = true;
+    if ([0,1,2,3,4].every(i => activeMarked[i]?.[4 - i])) hasBingo = true;
 
     if (hasBingo) {
-      onAwardPoints(150);
-      if (firestore) {
-        await updateDoc(doc(firestore, "partidas", partidaId), {
-          estado: 'finalizada',
-          ganador_uid: currentUser.uid,
-          ultima_actualizacion: serverTimestamp()
-        });
+      if (isCoopMode) {
+        if (calledNumbers.length > COOP_LIMIT) {
+          alert(`¡Completaste el Bingo pero superaron el límite de ${COOP_LIMIT} balotas cantadas! Intenten de nuevo.`);
+          return;
+        }
+
+        if (firestore) {
+          await updateDoc(doc(firestore, "partidas", partidaId), {
+            estado: 'finalizada',
+            resultado_cooperativo: 'victoria',
+            ganador_uid: currentUser.uid,
+            ultima_actualizacion: serverTimestamp()
+          });
+        }
+      } else {
+        onAwardPoints(150);
+        if (firestore) {
+          await updateDoc(doc(firestore, "partidas", partidaId), {
+            estado: 'finalizada',
+            ganador_uid: currentUser.uid,
+            ultima_actualizacion: serverTimestamp()
+          });
+        }
       }
     } else {
-      alert("¡Aún no completas una línea o diagonal válida de números cantados!");
+      alert("¡Aún no completas una línea o diagonal válida con los números cantados!");
     }
   };
+
+  // Trigger Victory Points in Coop Mode
+  useEffect(() => {
+    if (isCoopMode && localPartida?.resultado_cooperativo === 'victoria' && !pointsAwarded) {
+      setPointsAwarded(true);
+      confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 } });
+      onAwardPoints(150);
+    }
+  }, [isCoopMode, localPartida?.resultado_cooperativo, pointsAwarded, onAwardPoints]);
 
   const getLetterForNumber = (num: number) => {
     if (num <= 15) return 'B';
@@ -189,7 +271,7 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-6 font-sans animate-fade-in">
+    <div className="w-full max-w-3xl mx-auto space-y-6 font-sans animate-fade-in pb-12">
       {/* Top Header */}
       <div className="bg-white rounded-3xl p-5 border border-indigo-50 shadow-xl flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-3">
@@ -199,11 +281,17 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h2 className="font-sans text-xl font-extrabold text-gray-900 flex items-center gap-2">
+          <div className="text-left">
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1 ${
+                isCoopMode ? 'bg-emerald-100 text-emerald-900' : 'bg-indigo-100 text-indigo-900'
+              }`}>
+                {isCoopMode ? '🤝 Modo Cooperativo' : '⚔️ Modo Competitivo'}
+              </span>
+            </div>
+            <h2 className="font-sans text-xl font-extrabold text-gray-900 tracking-tight">
               🎱 Bingo Familiar (75 Números)
             </h2>
-            <p className="text-xs text-gray-500">Sincronizado para 2 a 6 jugadores de la familia</p>
           </div>
         </div>
 
@@ -212,7 +300,7 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
           {localPartida?.estado === 'finalizada' ? (
             <span className="px-4 py-2 rounded-2xl bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow">
               <Trophy size={16} />
-              {localPartida.ganador_uid === currentUser.uid ? '¡CANTAS BINGO! (+150 Pts)' : 'Partida Finalizada'}
+              {isCoopMode ? '¡VICTORIA EN EQUIPO! (+150 Pts)' : (localPartida.ganador_uid === currentUser.uid ? '¡CANTAS BINGO! (+150 Pts)' : 'Partida Finalizada')}
             </span>
           ) : (
             <span className="px-4 py-2 rounded-2xl bg-indigo-50 text-indigo-900 font-extrabold text-xs flex items-center gap-1.5 shadow">
@@ -222,6 +310,25 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
           )}
         </div>
       </div>
+
+      {/* Coop Challenge Banner */}
+      {isCoopMode && (
+        <div className="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 font-bold text-xs">
+          <div className="flex items-center gap-2">
+            <Users className="text-emerald-600 shrink-0" size={20} />
+            <div>
+              <span className="font-extrabold block">Cartón Único Compartido Familiar</span>
+              <span className="text-[11px] text-emerald-800 font-medium">
+                Cualquier integrante puede marcar las casillas cantadas.
+              </span>
+            </div>
+          </div>
+
+          <div className="px-3.5 py-1.5 rounded-2xl bg-emerald-200/80 text-emerald-950 font-black text-xs whitespace-nowrap">
+            Meta: Completar antes de Balota {calledNumbers.length} / {COOP_LIMIT}
+          </div>
+        </div>
+      )}
 
       {/* Number Caller Banner */}
       <div className="bg-gradient-to-r from-brand-primary to-indigo-900 text-white rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-6">
@@ -253,7 +360,7 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
               </button>
             ) : (
               <span className="px-4 py-2.5 bg-indigo-950/80 text-amber-300 font-bold text-[11px] rounded-2xl border border-indigo-800/80 shadow-sm">
-                Esperando anfitrión... ({Math.max(0, 20 - secondsInactive)}s para tomar control)
+                Esperando anfitrión... ({Math.max(0, 20 - secondsInactive)}s)
               </span>
             )
           )}
@@ -263,7 +370,7 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
             className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
           >
             <Sparkles size={16} />
-            ¡Cantar BINGO!
+            {isCoopMode ? '¡Cantar BINGO Cooperativo!' : '¡Cantar BINGO!'}
           </button>
         </div>
       </div>
@@ -279,10 +386,10 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
         </div>
 
         <div className="grid grid-cols-5 gap-2">
-          {myCard.map((row, r) =>
+          {activeCard.map((row, r) =>
             row.map((val, c) => {
               const isCenter = r === 2 && c === 2;
-              const isMarked = markedCells[r]?.[c];
+              const isMarked = activeMarked[r]?.[c];
               const isCalled = calledNumbers.includes(val);
 
               return (

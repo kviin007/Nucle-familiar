@@ -17,123 +17,16 @@ import {
   Zap,
   Flame
 } from 'lucide-react';
-import { Usuario } from '../../types';
+import { Usuario, DesbloqueoUsuario } from '../../types';
+import { BOTS, BotPersonality, isBotUnlocked } from '../../data/gameBots';
 
 interface ChessVsAiGameProps {
   currentUser: Usuario;
+  desbloqueosUsuarios?: DesbloqueoUsuario[];
   onExit: () => void;
   onAwardPoints: (points: number) => void;
   onSaveProgress?: (game: string, score: number) => void;
 }
-
-export interface BotPersonality {
-  id: 'oscar' | 'bea' | 'vikram' | 'lin';
-  name: string;
-  role: string;
-  avatar: string;
-  difficulty: 'Fácil' | 'Medio' | 'Desafío' | 'Maestro';
-  level: number;
-  badgeColor: string;
-  pointsReward: number;
-  description: string;
-  dialogs: {
-    welcome: string;
-    goodMove: string[];
-    checkUser: string[];
-    userCheck: string[];
-    captureUser: string[];
-    userCapture: string[];
-    botWin: string;
-    userWin: string;
-  };
-}
-
-const BOTS: BotPersonality[] = [
-  {
-    id: 'oscar',
-    name: 'Oscar 🐣',
-    role: 'Osezno Principiante',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop',
-    difficulty: 'Fácil',
-    level: 1,
-    badgeColor: 'bg-emerald-500 text-white',
-    pointsReward: 50,
-    description: 'Apenas está aprendiendo a mover los peones. Ideal para niños y primeros pasos.',
-    dialogs: {
-      welcome: '¡Hola! Estoy muy emocionado de jugar ajedrez contigo. ¡Vamos a divertirnos!',
-      goodMove: ['¡Upa! Ese movimiento me tomó por sorpresa.', '¡Gran jugada! Estás pensando rápido.', '¡Buena pieza movida!'],
-      checkUser: ['¡Ojo! Te puse en Jaque. ¡A proteger al Rey!', '¡Jaque! ¿A dónde moverás a tu Rey?'],
-      userCheck: ['¡Uy! ¡Me diste Jaque! Tengo que ponerme atento.', '¡Lindo Jaque! Déjame escapar...'],
-      captureUser: ['¡Jeje, atrapé una de tus piezas!', '¡Captura lograda! Un punto para mí.'],
-      userCapture: ['¡Oh no! Mi pobrecita pieza...', '¡Buena captura! Se notó tu astucia.'],
-      botWin: '¡Gané por esta vez! Pero jugaste súper bien. ¿Revancha?',
-      userWin: '¡Felicidades! ¡Me ganaste! Eres un genio del ajedrez. 🏆'
-    }
-  },
-  {
-    id: 'bea',
-    name: 'Bea 🦊',
-    role: 'Estratega Veloz',
-    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&h=150&fit=crop',
-    difficulty: 'Medio',
-    level: 2,
-    badgeColor: 'bg-amber-500 text-white',
-    pointsReward: 80,
-    description: 'Le encantan las tácticas con caballos y alfiles. Juega con buena defensa.',
-    dialogs: {
-      welcome: '¡Hola! Me gustan las partidas dinámicas. Demuéstrame tus mejores aperturas.',
-      goodMove: ['¡Excelente visión de tablero!', 'Uff, controlaste esa casilla clave.', '¡Qué táctica tan elegante!'],
-      checkUser: ['¡Jaque! Mis caballos están rodeando tu posición.', '¡Atención! Tu Rey está atacado.'],
-      userCheck: ['¡Jaque recibido! Buen cálculo de diagonales.', '¡Impresionante! Bloqueaste mi plan.'],
-      captureUser: ['Esa pieza estaba un poco desprotegida...', '¡Táctica ejecutada con éxito!'],
-      userCapture: ['¡Ay! Caí en tu trampa.', 'Buena captura. Tendré que reorganizarme.'],
-      botWin: '¡Partida estratégica ganada! Practicamos muy bien hoy.',
-      userWin: '¡Increíble victoria! Dominaste el tablero por completo. 🌟'
-    }
-  },
-  {
-    id: 'vikram',
-    name: 'Vikram 🦁',
-    role: 'Gran Maestro León',
-    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&h=150&fit=crop',
-    difficulty: 'Desafío',
-    level: 3,
-    badgeColor: 'bg-indigo-600 text-white',
-    pointsReward: 120,
-    description: 'Evalúa la posición, protege el centro y no regala ninguna pieza.',
-    dialogs: {
-      welcome: 'Un honor enfrentarte. El ajedrez requiere paciencia y precisión.',
-      goodMove: ['Un movimiento digno de torneo.', 'Sólida estructura de peones.', 'Controlas el centro de forma impecable.'],
-      checkUser: ['Jaque al Rey. Revisa cuidadosamente tus defensas.', 'Ataque coordinado al Rey.'],
-      userCheck: ['Buen Jaque. Me obligas a una maniobra defensiva.', 'Presión constante, bien jugado.'],
-      captureUser: ['Material ganado. La precisión es clave.', 'Ventaja posicional para las negras.'],
-      userCapture: ['Inesperado sacrificio... o una captura audaz.', 'Perdí material, debo contraatacar.'],
-      botWin: 'Jaque Mate. Excelente esfuerzo, cada partida nos hace más fuertes.',
-      userWin: '¡Soberbio Jaque Mate! Derrotaste a la bestia del ajedrez. 👑'
-    }
-  },
-  {
-    id: 'lin',
-    name: 'Lin 👑',
-    role: 'Campeona Mundial',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop',
-    difficulty: 'Maestro',
-    level: 4,
-    badgeColor: 'bg-purple-600 text-white',
-    pointsReward: 200,
-    description: 'Calcula múltiples jugadas por segundo. ¡El desafío definitivo de la IA!',
-    dialogs: {
-      welcome: 'Bienvenido al nivel máximo. Analizaré cada casilla de tu desarrollo.',
-      goodMove: ['Precisión de motor de análisis.', 'Línea de juego muy profunda.', 'Respuesta óptima.'],
-      checkUser: ['Jaque directo. Las opciones son escasas.', 'Ataque quirúrgico a tu Rey.'],
-      userCheck: ['Jaque detectado. Calculando la variante de escape más fuerte.'],
-      captureUser: ['Captura posicional óptima.', 'Pieza neutralizada.'],
-      userCapture: ['Acepto el intercambio de piezas.', 'Perdí esa pieza, pero mantengo la iniciativa.'],
-      botWin: 'Partida finalizada. ¡Un gran honor competir contigo!',
-      userWin: '¡HISTÓRICO! Has vencido al nivel Maestro de la IA. ¡Eres una leyenda! 🏆'
-    }
-  }
-];
 
 const PIECE_SYMBOLS: Record<string, string> = {
   wP: '♙', wN: '♘', wB: '♗', wR: '♖', wQ: '♕', wK: '♔',
@@ -158,7 +51,7 @@ const KIDS_EXPLANATIONS: Record<string, { name: string; desc: string }> = {
   k: { name: 'Rey', desc: 'Se mueve 1 casilla en cualquier dirección. Protégelo del Jaque Mate.' },
 };
 
-export default function ChessVsAiGame({ currentUser, onExit, onAwardPoints, onSaveProgress }: ChessVsAiGameProps) {
+export default function ChessVsAiGame({ currentUser, desbloqueosUsuarios = [], onExit, onAwardPoints, onSaveProgress }: ChessVsAiGameProps) {
   const [selectedBot, setSelectedBot] = useState<BotPersonality>(BOTS[0]);
   const [game, setGame] = useState<Chess>(new Chess());
   const [history, setHistory] = useState<string[]>([]);
@@ -468,19 +361,32 @@ export default function ChessVsAiGame({ currentUser, onExit, onAwardPoints, onSa
 
         {/* Bot Level Selector Pills */}
         <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 overflow-x-auto max-w-full">
-          {BOTS.map((bot) => (
-            <button
-              key={bot.id}
-              onClick={() => startNewGame(bot)}
-              className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                selectedBot.id === bot.id
-                  ? `${bot.badgeColor} shadow-md scale-105`
-                  : 'bg-white text-gray-600 hover:bg-slate-200'
-              }`}
-            >
-              <span>{bot.name}</span>
-            </button>
-          ))}
+          {BOTS.map((bot) => {
+            const unlocked = isBotUnlocked(bot.id, desbloqueosUsuarios, currentUser?.uid);
+            return (
+              <button
+                key={bot.id}
+                onClick={() => {
+                  if (!unlocked) {
+                    alert(`🔒 Cumple una meta semanal para desbloquear a ${bot.name}`);
+                    return;
+                  }
+                  startNewGame(bot);
+                }}
+                title={unlocked ? bot.description : `Cumple una meta semanal para desbloquear a ${bot.name}`}
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  selectedBot.id === bot.id
+                    ? `${bot.badgeColor} shadow-md scale-105`
+                    : unlocked
+                      ? 'bg-white text-gray-600 hover:bg-slate-200'
+                      : 'bg-gray-200 text-gray-400 border border-gray-300'
+                }`}
+              >
+                <span>{bot.name}</span>
+                {!unlocked && <span className="text-xs">🔒</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 

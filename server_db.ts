@@ -1,7 +1,7 @@
 import { initializeApp, getApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from "./src/types";
+import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario } from "./src/types";
 
 // Base sample datasets (Empty from scratch for real production)
 export const initialUsuarios: Usuario[] = [
@@ -39,6 +39,7 @@ let localDatabase: {
   consecuenciasPlantillas: ConsecuenciaPlantilla[];
   recompensasPlantillas: RecompensaPlantilla[];
   consecuenciasPendientes: ConsecuenciaPendiente[];
+  desbloqueosUsuarios: DesbloqueoUsuario[];
 } = {
   usuarios: [...initialUsuarios],
   metas: [...initialMetas],
@@ -61,10 +62,12 @@ let localDatabase: {
       recompensa_id: "recompensa_1",
       familia_id: "fam_kevin_admin",
       titulo: "Elegir la película del fin de semana",
-      descripcion: "Recompensa por cumplir el 100% de tus metas esta semana"
+      descripcion: "Recompensa por cumplir el 100% de tus metas esta semana",
+      tipo: "generica"
     }
   ],
-  consecuenciasPendientes: []
+  consecuenciasPendientes: [],
+  desbloqueosUsuarios: []
 };
 
 let db: Firestore | null = null;
@@ -244,6 +247,7 @@ export const dbService = {
         const plantillasSnap = await db.collection("consecuencias_plantillas").get();
         const recompensasSnap = await db.collection("recompensas_plantillas").get();
         const pendientesSnap = await db.collection("consecuencias_pendientes").get();
+        const desbloqueosSnap = await db.collection("desbloqueos_usuarios").get();
 
         const usuarios: Usuario[] = [];
         const metas: Meta[] = [];
@@ -253,6 +257,7 @@ export const dbService = {
         const consecuenciasPlantillas: ConsecuenciaPlantilla[] = [];
         const recompensasPlantillas: RecompensaPlantilla[] = [];
         const consecuenciasPendientes: ConsecuenciaPendiente[] = [];
+        const desbloqueosUsuarios: DesbloqueoUsuario[] = [];
 
         usersSnap.forEach(doc => usuarios.push({ uid: doc.id, ...doc.data() } as Usuario));
         metasSnap.forEach(doc => metas.push({ meta_id: doc.id, ...doc.data() } as Meta));
@@ -272,11 +277,12 @@ export const dbService = {
         plantillasSnap.forEach(doc => consecuenciasPlantillas.push({ consecuencia_id: doc.id, ...doc.data() } as ConsecuenciaPlantilla));
         recompensasSnap.forEach(doc => recompensasPlantillas.push({ recompensa_id: doc.id, ...doc.data() } as RecompensaPlantilla));
         pendientesSnap.forEach(doc => consecuenciasPendientes.push({ pendiente_id: doc.id, ...doc.data() } as ConsecuenciaPendiente));
+        desbloqueosSnap.forEach(doc => desbloqueosUsuarios.push({ desbloqueo_id: doc.id, ...doc.data() } as DesbloqueoUsuario));
 
         // Sort journal entries by date/time (unshifted / latest first)
         diario.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-        return { usuarios, metas, tareas, diario, familias, consecuenciasPlantillas, recompensasPlantillas, consecuenciasPendientes };
+        return { usuarios, metas, tareas, diario, familias, consecuenciasPlantillas, recompensasPlantillas, consecuenciasPendientes, desbloqueosUsuarios };
       } catch (err) {
         handleFirestoreError(err, "getState");
       }
@@ -321,7 +327,8 @@ export const dbService = {
       familias: [...initialFamilias],
       consecuenciasPlantillas: [],
       recompensasPlantillas: [],
-      consecuenciasPendientes: []
+      consecuenciasPendientes: [],
+      desbloqueosUsuarios: []
     };
     return { success: true };
   },
@@ -467,6 +474,8 @@ export const dbService = {
       consecuencias_activas: !!goal.consecuencias_activas,
       consecuencia_id: goal.consecuencia_id || "",
       requiere_aprobacion_adulto: goal.requiere_aprobacion_adulto !== false,
+      recompensa_activa: !!goal.recompensa_activa,
+      recompensa_id: goal.recompensa_id || "",
       fecha_limite: goal.fecha_limite || fecha_fin,
       porcentaje_semanal: 0,
       visible_familia: goal.visible_familia !== false
@@ -563,6 +572,49 @@ export const dbService = {
   evaluarCumplimientoMetas: async (familia_id: string) => {
     const familyGoals = localDatabase.metas.filter(m => m.familia_id === familia_id);
 
+    const grantRewardUnlockIfEligible = async (goal: Meta, targetUid: string) => {
+      if (!goal.recompensa_activa && !goal.recompensa_id) return;
+      const reward = localDatabase.recompensasPlantillas.find(r => r.recompensa_id === goal.recompensa_id);
+      if (!reward) return;
+
+      const alreadyUnlocked = localDatabase.desbloqueosUsuarios.some(
+        u => u.usuario_id === targetUid && u.origen_meta_id === goal.meta_id
+      );
+
+      if (!alreadyUnlocked) {
+        let unlockType: 'bot' | 'tiempo_extra' | 'generico' = 'generico';
+        let unlockVal = reward.titulo;
+
+        if (reward.tipo === 'desbloqueo_bot') {
+          unlockType = 'bot';
+          unlockVal = reward.bot_id_desbloqueado || 'vikram';
+        } else if (reward.tipo === 'tiempo_extra_juegos') {
+          unlockType = 'tiempo_extra';
+          unlockVal = String(reward.minutos_extra || 30);
+        }
+
+        const newUnlock: DesbloqueoUsuario = {
+          desbloqueo_id: `unlock_${Date.now()}_${Math.random().toString(36).substring(2,6)}`,
+          usuario_id: targetUid,
+          familia_id: goal.familia_id,
+          tipo: unlockType,
+          valor: unlockVal,
+          origen_meta_id: goal.meta_id,
+          fecha_obtenido: new Date().toISOString().split('T')[0],
+          visto: false
+        };
+
+        localDatabase.desbloqueosUsuarios.push(newUnlock);
+        if (isFirestoreEnabled && db) {
+          try {
+            await db.collection("desbloqueos_usuarios").doc(newUnlock.desbloqueo_id).set(newUnlock);
+          } catch (e) {
+            console.error("[Firestore grantRewardUnlock Error]", e);
+          }
+        }
+      }
+    };
+
     for (const goal of familyGoals) {
       const goalTasks = localDatabase.tareas.filter(t => t.meta_id === goal.meta_id);
 
@@ -573,7 +625,9 @@ export const dbService = {
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
         goal.porcentaje_semanal = pct;
 
-        if (pct < 100 && goal.consecuencias_activas) {
+        if (pct >= 100) {
+          await grantRewardUnlockIfEligible(goal, goal.usuario_id);
+        } else if (goal.consecuencias_activas) {
           const alreadyHasPending = localDatabase.consecuenciasPendientes.some(
             p => p.usuario_id === goal.usuario_id && p.familia_id === familia_id && p.estado === 'pendiente'
           );
@@ -637,7 +691,9 @@ export const dbService = {
             porcentaje: pct
           });
 
-          if (pct < 100 && goal.consecuencias_activas) {
+          if (pct >= 100) {
+            await grantRewardUnlockIfEligible(goal, uid);
+          } else if (goal.consecuencias_activas) {
             const alreadyHasPending = localDatabase.consecuenciasPendientes.some(
               p => p.usuario_id === uid && p.familia_id === familia_id && p.estado === 'pendiente'
             );
@@ -1192,6 +1248,46 @@ export const dbService = {
         puntaje: score,
         mejor_tiempo: bestTime
       });
+    }
+    return { success: true };
+  },
+
+  createRewardTemplate: async (plantilla: Partial<RecompensaPlantilla>) => {
+    const recompensa_id = `recompensa_${Date.now()}`;
+    const newPlantilla: RecompensaPlantilla = {
+      recompensa_id,
+      familia_id: plantilla.familia_id || "fam_kevin_admin",
+      titulo: plantilla.titulo!,
+      descripcion: plantilla.descripcion || "",
+      tipo: plantilla.tipo || "generica",
+      bot_id_desbloqueado: plantilla.bot_id_desbloqueado,
+      minutos_extra: plantilla.minutos_extra
+    };
+
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("recompensas_plantillas").doc(recompensa_id).set(newPlantilla);
+      } catch (e) {
+        console.error("[Firestore createRewardTemplate Error]", e);
+      }
+    }
+
+    localDatabase.recompensasPlantillas.push(newPlantilla);
+    return { success: true, newPlantilla };
+  },
+
+  markUnlockAsSeen: async (desbloqueo_id: string) => {
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("desbloqueos_usuarios").doc(desbloqueo_id).update({ visto: true });
+      } catch (e) {
+        console.error("[Firestore markUnlockAsSeen Error]", e);
+      }
+    }
+
+    const item = localDatabase.desbloqueosUsuarios.find(u => u.desbloqueo_id === desbloqueo_id);
+    if (item) {
+      item.visto = true;
     }
     return { success: true };
   }

@@ -53,6 +53,10 @@ export interface Meta {
   consecuencia_id?: string;            // referencia a plantilla
   requiere_aprobacion_adulto: boolean; // true por defecto
   
+  // Sistema de recompensas
+  recompensa_activa?: boolean;
+  recompensa_id?: string;             // referencia a RecompensaPlantilla
+  
   fecha_limite?: string;               // compatibilidad con campos previos
   porcentaje_semanal: number;          // % del periodo actual
   visible_familia: boolean;
@@ -89,6 +93,20 @@ export interface RecompensaPlantilla {
   familia_id: string;
   titulo: string;                // ej. "Elegir la película del domingo"
   descripcion?: string;
+  tipo?: 'generica' | 'desbloqueo_bot' | 'tiempo_extra_juegos';  // NUEVO
+  bot_id_desbloqueado?: 'oscar' | 'bea' | 'vikram' | 'lin';     // NUEVO, solo si tipo = 'desbloqueo_bot'
+  minutos_extra?: number;                                       // NUEVO, solo si tipo = 'tiempo_extra_juegos'
+}
+
+export interface DesbloqueoUsuario {
+  desbloqueo_id: string;
+  usuario_id: string;
+  familia_id: string;
+  tipo: 'bot' | 'tiempo_extra' | 'generico';
+  valor: string;              // ej. 'lin', o minutos como string
+  origen_meta_id: string;     // qué meta lo desbloqueó
+  fecha_obtenido: string;
+  visto?: boolean;
 }
 
 export interface ConsecuenciaPendiente {

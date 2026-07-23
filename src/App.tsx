@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from './types';
+import confetti from 'canvas-confetti';
+import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario } from './types';
 import OnboardingScreen, { OnboardingData } from './components/OnboardingScreen';
 import HoyScreen from './components/HoyScreen';
 import MetasScreen from './components/MetasScreen';
@@ -50,6 +51,7 @@ export default function App() {
   const [consecuenciasPlantillas, setConsecuenciasPlantillas] = useState<ConsecuenciaPlantilla[]>([]);
   const [recompensasPlantillas, setRecompensasPlantillas] = useState<RecompensaPlantilla[]>([]);
   const [consecuenciasPendientes, setConsecuenciasPendientes] = useState<ConsecuenciaPendiente[]>([]);
+  const [desbloqueosUsuarios, setDesbloqueosUsuarios] = useState<DesbloqueoUsuario[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
   const [isGeminiAdvisorOpen, setIsGeminiAdvisorOpen] = useState<boolean>(false);
@@ -177,6 +179,7 @@ export default function App() {
         setConsecuenciasPlantillas(data.consecuenciasPlantillas || []);
         setRecompensasPlantillas(data.recompensasPlantillas || []);
         setConsecuenciasPendientes(data.consecuenciasPendientes || []);
+        setDesbloqueosUsuarios(data.desbloqueosUsuarios || []);
 
         // Sync local current user's details if modified on server
         if (currentUser) {
@@ -466,6 +469,64 @@ export default function App() {
       console.error("Error creating consequence template", e);
     }
   };
+
+  const handleCreateRewardTemplate = async (template: Partial<RecompensaPlantilla>) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch('/api/rewards/templates/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          familia_id: currentUser.familia_id || "fam_kevin_admin",
+          ...template
+        })
+      });
+      if (res.ok) {
+        await fetchState();
+        showToast("Plantilla de recompensa creada con éxito 🎁", "success");
+      }
+    } catch (e) {
+      console.error("Error creating reward template", e);
+    }
+  };
+
+  // Check for unseen unlocks and trigger toast notification + confetti
+  useEffect(() => {
+    if (!currentUser?.uid || desbloqueosUsuarios.length === 0) return;
+
+    const unseen = desbloqueosUsuarios.filter(d => d.usuario_id === currentUser.uid && !d.visto);
+    if (unseen.length > 0) {
+      unseen.forEach(async (u) => {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+
+        let msg = `🎉 ¡NUEVA RECOMPENSA DESBLOQUEADA!`;
+        if (u.tipo === 'bot') {
+          msg = `🤖 ¡RECOMPENSA DE META CUMPLIDA! Desbloqueaste al Bot ${u.valor.toUpperCase()} en los juegos vs IA.`;
+        } else if (u.tipo === 'tiempo_extra') {
+          msg = `⏱️ ¡RECOMPENSA DE META CUMPLIDA! Ganaste +${u.valor} minutos extra de juegos.`;
+        } else {
+          msg = `🎁 ¡RECOMPENSA DE META CUMPLIDA! Has ganado: ${u.valor}`;
+        }
+
+        showToast(msg, 'success');
+
+        try {
+          await fetch('/api/unlocks/mark-seen', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ desbloqueo_id: u.desbloqueo_id })
+          });
+          setDesbloqueosUsuarios(prev => prev.map(item => item.desbloqueo_id === u.desbloqueo_id ? { ...item, visto: true } : item));
+        } catch (err) {
+          console.error("Error marking unlock as seen:", err);
+        }
+      });
+    }
+  }, [desbloqueosUsuarios, currentUser?.uid]);
 
   const handleResolvePendingConsequence = async (pendiente_id: string, action: 'assign' | 'forgive') => {
     try {
@@ -1224,9 +1285,11 @@ export default function App() {
                 usuarios={usuarios}
                 currentUser={currentUser}
                 consecuenciasPlantillas={consecuenciasPlantillas}
+                recompensasPlantillas={recompensasPlantillas}
                 consecuenciasPendientes={consecuenciasPendientes}
                 onAddGoal={handleAddGoal}
                 onCreateConsequenceTemplate={handleCreateConsequenceTemplate}
+                onCreateRewardTemplate={handleCreateRewardTemplate}
                 onResolvePendingConsequence={handleResolvePendingConsequence}
                 onEvaluateCompliance={handleEvaluateCompliance}
               />
@@ -1258,6 +1321,7 @@ export default function App() {
               <JuegosScreen
                 currentUser={currentUser}
                 usuarios={usuarios}
+                desbloqueosUsuarios={desbloqueosUsuarios}
                 onStateUpdate={fetchState}
               />
             )}

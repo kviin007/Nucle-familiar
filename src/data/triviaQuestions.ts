@@ -54,6 +54,56 @@ export const triviaQuestions: TriviaQuestion[] = [
       "Inventar que todo está bien siempre"
     ],
     correctIndex: 1,
-    explanation: "¡Exacto! El diario de emociones de Vinculo Familiar promueve la transparencia y el apoyo emocional entre todos."
+    explanation: "¡Exacto! El diario de emociones de Vínculo Familiar promueve la transparencia y el apoyo emocional entre todos."
+  },
+  {
+    question: "¿Qué hábito saludable ayuda a mantener alta la energía de toda la familia?",
+    options: [
+      "Tomar suficiente agua y registrar el reto de pasos diarios",
+      "Ver televisión hasta la madrugada",
+      "Comer comida rápida en todas las comidas"
+    ],
+    correctIndex: 0,
+    explanation: "¡Muy bien! Registrar nuestros pasos y mantenernos activos nos da fuerza y salud para compartir tiempo juntos."
+  },
+  {
+    question: "¿Qué planeta del sistema solar es conocido como el Planeta Rojo?",
+    options: [
+      "Júpiter",
+      "Marte",
+      "Venus"
+    ],
+    correctIndex: 1,
+    explanation: "¡Correcto! Marte es conocido como el Planeta Rojo debido al óxido de hierro en su superficie."
+  },
+  {
+    question: "¿Cuál es el océano más grande del planeta Tierra?",
+    options: [
+      "Océano Atlántico",
+      "Océano Índico",
+      "Océano Pacífico"
+    ],
+    correctIndex: 2,
+    explanation: "¡Excelente! El Océano Pacífico es el más extenso de la Tierra, cubriendo más del 30% de la superficie del planeta."
+  },
+  {
+    question: "¿Cuál es el mamífero volador más grande del mundo?",
+    options: [
+      "El Zorro Volador (Murciélago gigante)",
+      "El Águila Real",
+      "El Pájaro Carpintero"
+    ],
+    correctIndex: 0,
+    explanation: "¡Correcto! El Zorro Volador es una especie de murciélago gigante de las Filipinas con una envergadura de hasta 1.7 metros."
+  },
+  {
+    question: "¿Qué valor familiar nos ayuda a ponernos en el lugar del otro ante un problema?",
+    options: [
+      "Egoísmo",
+      "Empatía",
+      "Indiferencia"
+    ],
+    correctIndex: 1,
+    explanation: "¡Exacto! La empatía nos permite entender y sentir lo que el otro experimenta, fortaleciendo el lazo familiar."
   }
 ];

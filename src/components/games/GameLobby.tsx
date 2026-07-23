@@ -12,10 +12,10 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { firestore, isFirebaseEnabled } from '../../lib/firebase';
-import { Users, Plus, ArrowLeft, Play, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Users, Plus, ArrowLeft, Play, RefreshCw, AlertTriangle, ExternalLink, ShieldCheck, Swords } from 'lucide-react';
 
 interface GameLobbyProps {
-  gameType: 'chess' | 'guesswho' | 'bingo' | 'battleship';
+  gameType: 'chess' | 'guesswho' | 'bingo' | 'battleship' | 'trivia';
   gameTitle: string;
   maxPlayers: number;
   currentUser: Usuario;
@@ -36,6 +36,7 @@ export default function GameLobby({
   const [activePartidas, setActivePartidas] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [invitedMembers, setInvitedMembers] = useState<string[]>([]);
+  const [modo, setModo] = useState<'competitivo' | 'cooperativo'>('competitivo');
   const [creating, setCreating] = useState<boolean>(false);
   const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
 
@@ -105,18 +106,29 @@ export default function GameLobby({
         p2_secret = uList[Math.floor(Math.random() * uList.length)]?.uid || (invitedMembers[0] || currentUser.uid);
       }
 
-      const docRef = await addDoc(collection(firestore, "partidas"), {
+      const initialData: any = {
         game_type: gameType,
+        modo: modo,
         familia_id: currentUser.familia_id,
         creador_uid: currentUser.uid,
         jugadores: players,
         turno_actual: currentUser.uid,
-        estado: players.length >= maxPlayers ? 'en_curso' : 'sala_espera',
+        estado: players.length >= maxPlayers || modo === 'cooperativo' ? 'en_curso' : 'sala_espera',
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Chess initial
         numeros_cantados: [],
         creado_en: serverTimestamp(),
         ultima_actualizacion: serverTimestamp()
-      });
+      };
+
+      if (gameType === 'trivia') {
+        initialData.pregunta_actual = 0;
+        initialData.puntos_equipo = 0;
+        initialData.vidas_restantes = 3;
+        initialData.respuestas_correctas = 0;
+        initialData.pregunta_inicio_ts = Date.now();
+      }
+
+      const docRef = await addDoc(collection(firestore, "partidas"), initialData);
 
       // Save secret character to private subcollections for player security
       if (gameType === 'guesswho' && p1_secret) {
@@ -131,13 +143,8 @@ export default function GameLobby({
       }
 
       onStartGame(docRef.id, {
-        game_type: gameType,
-        familia_id: currentUser.familia_id,
-        creador_uid: currentUser.uid,
-        jugadores: players,
-        turno_actual: currentUser.uid,
-        estado: players.length >= maxPlayers ? 'en_curso' : 'sala_espera',
-        numeros_cantados: []
+        id: docRef.id,
+        ...initialData
       });
     } catch (e) {
       console.error("Error creating game:", e);
@@ -182,7 +189,7 @@ export default function GameLobby({
           </button>
           <div className="text-left">
             <h2 className="font-extrabold text-xl text-gray-900">{gameTitle}</h2>
-            <p className="text-xs text-gray-500">Sala de espera multijugador</p>
+            <p className="text-xs text-gray-500">Sala de espera multijugador familiar</p>
           </div>
         </div>
 
@@ -197,6 +204,46 @@ export default function GameLobby({
           <Plus className="text-brand-primary" size={20} />
           Crear Nueva Partida e Invitar
         </h3>
+
+        {/* Mode Selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider block">
+            Modalidad de Juego:
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setModo('competitivo')}
+              className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                modo === 'competitivo'
+                  ? 'border-brand-primary bg-indigo-50/60 shadow-sm ring-2 ring-brand-primary'
+                  : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <Swords size={16} className="text-brand-primary" />
+                <span className="font-extrabold text-xs text-gray-900">Modo Competitivo</span>
+              </div>
+              <span className="text-[10px] text-gray-500 font-medium mt-1">Familia contra familia</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setModo('cooperativo')}
+              className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                modo === 'cooperativo'
+                  ? 'border-emerald-500 bg-emerald-50/60 shadow-sm ring-2 ring-emerald-500'
+                  : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={16} className="text-emerald-600" />
+                <span className="font-extrabold text-xs text-emerald-950">Modo Cooperativo</span>
+              </div>
+              <span className="text-[10px] text-emerald-700 font-medium mt-1">Familia unida vs reloj</span>
+            </button>
+          </div>
+        </div>
 
         <div className="space-y-3">
           <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider block">
@@ -329,7 +376,14 @@ export default function GameLobby({
                       className="w-10 h-10 rounded-full object-cover border border-slate-200"
                     />
                     <div>
-                      <span className="text-xs font-extrabold text-gray-900 block">Sala de {host.nombre}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-extrabold text-gray-900 block">Sala de {host.nombre}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                          partida.modo === 'cooperativo' ? 'bg-emerald-100 text-emerald-900' : 'bg-indigo-100 text-indigo-900'
+                        }`}>
+                          {partida.modo === 'cooperativo' ? '🤝 Cooperativo' : '⚔️ Competitivo'}
+                        </span>
+                      </div>
                       <span className="text-[10px] text-gray-500 font-medium">
                         {(partida.jugadores || []).length} / {maxPlayers} Jugadores • Estado: {partida.estado}
                       </span>

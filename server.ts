@@ -292,6 +292,41 @@ async function startServer() {
     }
   });
 
+  // API Route: Create Reward Template
+  app.post("/api/rewards/templates/create", async (req, res) => {
+    const { titulo, descripcion, tipo, bot_id_desbloqueado, minutos_extra, familia_id } = req.body;
+    if (!titulo || !familia_id) {
+      return res.status(400).json({ error: "Título y ID de familia son obligatorios." });
+    }
+    try {
+      const result = await dbService.createRewardTemplate({
+        titulo,
+        descripcion,
+        tipo,
+        bot_id_desbloqueado,
+        minutos_extra,
+        familia_id
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al crear la plantilla de recompensa." });
+    }
+  });
+
+  // API Route: Mark Unlock as Seen
+  app.post("/api/unlocks/mark-seen", async (req, res) => {
+    const { desbloqueo_id } = req.body;
+    if (!desbloqueo_id) {
+      return res.status(400).json({ error: "desbloqueo_id es obligatorio." });
+    }
+    try {
+      const result = await dbService.markUnlockAsSeen(desbloqueo_id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al marcar desbloqueo como visto." });
+    }
+  });
+
   // API Route: Create Consequence Template
   app.post("/api/consequences/templates/create", async (req, res) => {
     const { titulo, descripcion, categoria, tiempo_estimado_min, familia_id, creado_por } = req.body;
