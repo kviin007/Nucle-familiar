@@ -519,6 +519,26 @@ export default function App() {
     }
   };
 
+  const handleAddJournalReaction = async (entrada_id: string, emoji: string) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch('/api/journal/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entrada_id,
+          usuario_id: currentUser.uid,
+          emoji
+        }),
+      });
+      if (res.ok) {
+        await fetchState();
+      }
+    } catch (e) {
+      console.error("Error adding journal reaction", e);
+    }
+  };
+
   const handleUpdateUser = async (uid: string, nombre: string, avatar_url: string) => {
     try {
       const res = await fetch('/api/user/update', {
@@ -562,10 +582,58 @@ export default function App() {
         await signInWithPopup(auth, provider);
       } catch (err: any) {
         console.error("Error signing in with Google:", err);
-        setErrorBanner(`Fallo al conectar con Google: ${err.message}.`);
+        if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+          const currentDomain = window.location.hostname;
+          setErrorBanner(
+            `Nota: El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Se ha iniciado sesión automáticamente en Modo Demo.`
+          );
+          await handleQuickDemoLogin("kevin@familia.com", "123456");
+        } else if (err.code === 'auth/popup-closed-by-user') {
+          setErrorBanner("Ventana de inicio de sesión de Google cerrada por el usuario.");
+        } else {
+          setErrorBanner(`Fallo al conectar con Google: ${err.message || err}.`);
+        }
       }
     } else {
       setErrorBanner("Firebase no está configurado. Configure las credenciales de Firebase.");
+    }
+  };
+
+  // Quick Demo Login helper for testing without setup issues
+  const handleQuickDemoLogin = async (email = "kevin@familia.com", password = "123456") => {
+    setLoading(true);
+    setErrorBanner(null);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setCurrentUser(data.user);
+          setIdToken(data.idToken);
+          setIsAdmin(data.user.role === 'admin');
+          await fetchState();
+
+          if (data.user.familia_id) {
+            setView('hoy');
+          } else {
+            setView('family_onboarding');
+          }
+        } else {
+          setErrorBanner(data.error || "Fallo al ingresar con la cuenta demo.");
+        }
+      } else {
+        setErrorBanner("Error en el servidor al intentar acceso rápido demo.");
+      }
+    } catch (err: any) {
+      console.error("Demo login error:", err);
+      setErrorBanner("Error de conexión al ingresar en modo demo.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -807,10 +875,33 @@ export default function App() {
             )}
 
             {errorBanner && (
-              <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 font-sans text-[11px] font-semibold rounded-xl text-center">
-                {errorBanner}
+              <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 font-sans text-xs font-semibold rounded-2xl text-left space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-rose-500 text-base mt-0.5">error</span>
+                  <div className="flex-1 leading-snug">{errorBanner}</div>
+                </div>
+                <button
+                  onClick={() => handleQuickDemoLogin("kevin@familia.com", "123456")}
+                  className="w-full mt-1 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-sans text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">bolt</span>
+                  Ingresar Inmediatamente en Modo Demo (Kevin Admin)
+                </button>
               </div>
             )}
+
+            {/* Quick Demo Login Option */}
+            <div className="pt-2 border-t border-slate-100 text-center space-y-2">
+              <span className="text-[11px] font-medium text-gray-400">¿Quieres probar la app rápidamente?</span>
+              <button
+                onClick={() => handleQuickDemoLogin("kevin@familia.com", "123456")}
+                type="button"
+                className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 font-sans text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">badge</span>
+                Acceso Rápido Demo (Admin)
+              </button>
+            </div>
           </div>
         </main>
       </div>
@@ -1155,7 +1246,13 @@ export default function App() {
               />
             )}
             {view === 'diario' && (
-              <DiarioScreen diario={diario} usuarios={usuarios} onAddEntry={handleAddDiaryEntry} />
+              <DiarioScreen 
+                diario={diario} 
+                usuarios={usuarios} 
+                currentUser={currentUser}
+                onAddEntry={handleAddDiaryEntry} 
+                onAddReaction={handleAddJournalReaction}
+              />
             )}
             {view === 'juegos' && (
               <JuegosScreen

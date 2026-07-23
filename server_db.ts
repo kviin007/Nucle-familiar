@@ -759,7 +759,8 @@ export const dbService = {
       texto: entry.texto!,
       emocion: entry.emocion!,
       visible_familia: entry.visible_familia !== false,
-      fecha: entry.fecha || new Date().toISOString().split('T')[0]
+      fecha: entry.fecha || new Date().toISOString().split('T')[0],
+      reacciones: []
     };
 
     if (isFirestoreEnabled && db) {
@@ -773,6 +774,37 @@ export const dbService = {
 
     localDatabase.diario.unshift(newEntry);
     return { success: true, newEntry };
+  },
+
+  addJournalReaction: async (entrada_id: string, usuario_id: string, emoji: string) => {
+    const entry = localDatabase.diario.find(d => d.entrada_id === entrada_id);
+    if (entry) {
+      if (!entry.reacciones) entry.reacciones = [];
+      const userPrevIdx = entry.reacciones.findIndex(r => r.usuario_id === usuario_id);
+      
+      if (userPrevIdx !== -1 && entry.reacciones[userPrevIdx].emoji === emoji) {
+        // Toggle off if same emoji clicked again
+        entry.reacciones.splice(userPrevIdx, 1);
+      } else if (userPrevIdx !== -1) {
+        // Change reaction emoji
+        entry.reacciones[userPrevIdx] = { usuario_id, emoji, fecha: new Date().toISOString() };
+      } else {
+        // Add new reaction
+        entry.reacciones.push({ usuario_id, emoji, fecha: new Date().toISOString() });
+      }
+
+      if (isFirestoreEnabled && db) {
+        try {
+          await db.collection("diario").doc(entrada_id).update({
+            reacciones: entry.reacciones
+          });
+        } catch (e) {
+          console.error("[Firestore addJournalReaction Error]", e);
+        }
+      }
+      return { success: true, reacciones: entry.reacciones };
+    }
+    throw new Error("Entrada de diario no encontrada.");
   },
 
   updateUserProfile: async (uid: string, nombre?: string, avatar_url?: string, role?: string, familia_id?: string) => {

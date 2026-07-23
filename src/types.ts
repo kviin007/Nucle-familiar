@@ -105,6 +105,12 @@ export interface ConsecuenciaPendiente {
   estado: 'pendiente' | 'asignada' | 'perdonada';
 }
 
+export interface ReaccionDiario {
+  usuario_id: string;
+  emoji: string;
+  fecha?: string;
+}
+
 export interface DiarioEntrada {
   entrada_id: string;
   usuario_id: string;
@@ -113,6 +119,7 @@ export interface DiarioEntrada {
   nota_voz_url?: string;
   visible_familia: boolean;
   fecha: string; // YYYY-MM-DD
+  reacciones?: ReaccionDiario[];
 }
 
 export interface AhorroSobre {

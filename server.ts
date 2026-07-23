@@ -346,6 +346,20 @@ async function startServer() {
     }
   });
 
+  // API Route: Add or Toggle Reaction to Journal Entry
+  app.post("/api/journal/react", async (req, res) => {
+    const { entrada_id, usuario_id, emoji } = req.body;
+    if (!entrada_id || !usuario_id || !emoji) {
+      return res.status(400).json({ error: "entrada_id, usuario_id y emoji son obligatorios." });
+    }
+    try {
+      const result = await dbService.addJournalReaction(entrada_id, usuario_id, emoji);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al registrar la reacción." });
+    }
+  });
+
   // API Route: Update User Profile / Register New User
   app.post("/api/user/update", async (req, res) => {
     const { uid, nombre, avatar_url, role, familia_id } = req.body;
