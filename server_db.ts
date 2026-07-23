@@ -1,7 +1,7 @@
 import { initializeApp, getApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia } from "./src/types";
+import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from "./src/types";
 
 // Base sample datasets (Empty from scratch for real production)
 export const initialUsuarios: Usuario[] = [
@@ -30,12 +30,41 @@ export const initialFamilias: Familia[] = [
 ];
 
 // In-Memory fallback state
-let localDatabase = {
+let localDatabase: {
+  usuarios: Usuario[];
+  metas: Meta[];
+  tareas: TareaDiaria[];
+  diario: DiarioEntrada[];
+  familias: Familia[];
+  consecuenciasPlantillas: ConsecuenciaPlantilla[];
+  recompensasPlantillas: RecompensaPlantilla[];
+  consecuenciasPendientes: ConsecuenciaPendiente[];
+} = {
   usuarios: [...initialUsuarios],
   metas: [...initialMetas],
   tareas: [...initialTareas],
   diario: [...initialDiario],
-  familias: [...initialFamilias]
+  familias: [...initialFamilias],
+  consecuenciasPlantillas: [
+    {
+      consecuencia_id: "plantilla_1",
+      familia_id: "fam_kevin_admin",
+      titulo: "Lavar los platos de la cena",
+      descripcion: "Responsabilidad extra por no haber completado la meta diaria",
+      categoria: "Hogar",
+      tiempo_estimado_min: 20,
+      creado_por: "kevin-admin-uid"
+    }
+  ],
+  recompensasPlantillas: [
+    {
+      recompensa_id: "recompensa_1",
+      familia_id: "fam_kevin_admin",
+      titulo: "Elegir la película del fin de semana",
+      descripcion: "Recompensa por cumplir el 100% de tus metas esta semana"
+    }
+  ],
+  consecuenciasPendientes: []
 };
 
 let db: Firestore | null = null;
@@ -212,12 +241,18 @@ export const dbService = {
         const tasksSnap = await db.collection("tareas_diarias").get();
         const journalSnap = await db.collection("diario").get();
         const familiesSnap = await db.collection("familias").get();
+        const plantillasSnap = await db.collection("consecuencias_plantillas").get();
+        const recompensasSnap = await db.collection("recompensas_plantillas").get();
+        const pendientesSnap = await db.collection("consecuencias_pendientes").get();
 
         const usuarios: Usuario[] = [];
         const metas: Meta[] = [];
         const tareas: TareaDiaria[] = [];
         const diario: DiarioEntrada[] = [];
         const familias: Familia[] = [];
+        const consecuenciasPlantillas: ConsecuenciaPlantilla[] = [];
+        const recompensasPlantillas: RecompensaPlantilla[] = [];
+        const consecuenciasPendientes: ConsecuenciaPendiente[] = [];
 
         usersSnap.forEach(doc => usuarios.push({ uid: doc.id, ...doc.data() } as Usuario));
         metasSnap.forEach(doc => metas.push({ meta_id: doc.id, ...doc.data() } as Meta));
@@ -234,11 +269,14 @@ export const dbService = {
         });
         journalSnap.forEach(doc => diario.push({ entrada_id: doc.id, ...doc.data() } as DiarioEntrada));
         familiesSnap.forEach(doc => familias.push({ familia_id: doc.id, ...doc.data() } as Familia));
+        plantillasSnap.forEach(doc => consecuenciasPlantillas.push({ consecuencia_id: doc.id, ...doc.data() } as ConsecuenciaPlantilla));
+        recompensasSnap.forEach(doc => recompensasPlantillas.push({ recompensa_id: doc.id, ...doc.data() } as RecompensaPlantilla));
+        pendientesSnap.forEach(doc => consecuenciasPendientes.push({ pendiente_id: doc.id, ...doc.data() } as ConsecuenciaPendiente));
 
         // Sort journal entries by date/time (unshifted / latest first)
         diario.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-        return { usuarios, metas, tareas, diario, familias };
+        return { usuarios, metas, tareas, diario, familias, consecuenciasPlantillas, recompensasPlantillas, consecuenciasPendientes };
       } catch (err) {
         handleFirestoreError(err, "getState");
       }
@@ -280,7 +318,10 @@ export const dbService = {
       metas: [...initialMetas],
       tareas: [...initialTareas],
       diario: [...initialDiario],
-      familias: [...initialFamilias]
+      familias: [...initialFamilias],
+      consecuenciasPlantillas: [],
+      recompensasPlantillas: [],
+      consecuenciasPendientes: []
     };
     return { success: true };
   },
@@ -390,12 +431,43 @@ export const dbService = {
 
   createGoal: async (goal: Partial<Meta>) => {
     const meta_id = `meta_${Date.now()}`;
+    const startDate = goal.fecha_inicio || new Date().toISOString().split('T')[0];
+    
+    // Calculate end date based on duracion_valor & duracion_unidad
+    let endCalculated = new Date(startDate);
+    const durVal = Number(goal.duracion_valor) || 1;
+    const durUnit = goal.duracion_unidad || 'meses';
+    if (durUnit === 'dias') {
+      endCalculated.setDate(endCalculated.getDate() + durVal);
+    } else if (durUnit === 'semanas') {
+      endCalculated.setDate(endCalculated.getDate() + durVal * 7);
+    } else {
+      endCalculated.setMonth(endCalculated.getMonth() + durVal);
+    }
+    const fecha_fin = endCalculated.toISOString().split('T')[0];
+
     const newGoal: Meta = {
       meta_id,
       usuario_id: goal.usuario_id!,
+      familia_id: goal.familia_id || "fam_kevin_admin",
+      tipo: goal.tipo || 'individual',
       titulo: goal.titulo!,
-      categoria: goal.categoria!,
-      fecha_limite: goal.fecha_limite || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
+      categoria: goal.categoria || 'Salud',
+      frecuencia_objetivo: Number(goal.frecuencia_objetivo) || 3,
+      unidad_frecuencia: goal.unidad_frecuencia || 'semana',
+      duracion_valor: durVal,
+      duracion_unidad: durUnit,
+      fecha_inicio: startDate,
+      fecha_fin: goal.fecha_fin || fecha_fin,
+      miembros_asignados: goal.miembros_asignados || (goal.tipo === 'familiar' ? [goal.usuario_id!] : undefined),
+      progreso_por_miembro: goal.tipo === 'familiar' ? [] : undefined,
+      generar_tareas_automaticas: !!goal.generar_tareas_automaticas,
+      dias_preferidos: goal.dias_preferidos || [],
+      hora_sugerida: goal.hora_sugerida || '09:00',
+      consecuencias_activas: !!goal.consecuencias_activas,
+      consecuencia_id: goal.consecuencia_id || "",
+      requiere_aprobacion_adulto: goal.requiere_aprobacion_adulto !== false,
+      fecha_limite: goal.fecha_limite || fecha_fin,
       porcentaje_semanal: 0,
       visible_familia: goal.visible_familia !== false
     };
@@ -403,14 +475,280 @@ export const dbService = {
     if (isFirestoreEnabled && db) {
       try {
         await db.collection("metas").doc(meta_id).set(newGoal);
-        return { success: true, newGoal };
       } catch (e) {
         console.error("[Firestore createGoal Error]", e);
       }
     }
 
     localDatabase.metas.push(newGoal);
+
+    // Auto-generate tasks if configured
+    if (newGoal.generar_tareas_automaticas) {
+      await dbService.generarTareasDesdeMetas(newGoal);
+    }
+
     return { success: true, newGoal };
+  },
+
+  generarTareasDesdeMetas: async (goal: Meta) => {
+    if (!goal.generar_tareas_automaticas) return;
+
+    const startDateStr = goal.fecha_inicio || new Date().toISOString().split('T')[0];
+    const startDate = new Date(startDateStr);
+
+    let targetUserIds: string[] = [];
+    if (goal.tipo === 'individual') {
+      targetUserIds = [goal.usuario_id];
+    } else {
+      if (goal.miembros_asignados && goal.miembros_asignados.length > 0) {
+        targetUserIds = goal.miembros_asignados;
+      } else {
+        const fam = localDatabase.familias.find(f => f.familia_id === goal.familia_id);
+        targetUserIds = fam?.miembros || [goal.usuario_id];
+      }
+    }
+
+    // SEMANA DE GRACIA (Grace Week calculation)
+    const dayOfWeek = startDate.getDay(); // 0=Sun..6=Sat
+    const daysRemainingInWeek = 7 - (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    let targetCount = goal.frecuencia_objetivo || 3;
+
+    if (goal.unidad_frecuencia === 'semana' && daysRemainingInWeek < 7) {
+      targetCount = Math.max(1, Math.round((goal.frecuencia_objetivo * daysRemainingInWeek) / 7));
+    }
+
+    // Determine target days
+    let scheduledDays: number[] = [];
+    if (goal.dias_preferidos && goal.dias_preferidos.length > 0) {
+      scheduledDays = goal.dias_preferidos.slice(0, targetCount);
+    } else {
+      const step = Math.max(1, Math.floor(7 / targetCount));
+      for (let i = 0; i < targetCount; i++) {
+        scheduledDays.push((dayOfWeek + i * step) % 7);
+      }
+    }
+
+    // Create tasks for scheduled days within current week
+    for (let d = 0; d < 7; d++) {
+      const tDate = new Date(startDate);
+      tDate.setDate(startDate.getDate() + d);
+
+      if (scheduledDays.includes(tDate.getDay())) {
+        const dateStr = tDate.toISOString().split('T')[0];
+        for (const uid of targetUserIds) {
+          const taskTitle = `${goal.titulo} (${dateStr})`;
+          
+          const alreadyExists = localDatabase.tareas.some(
+            t => t.meta_id === goal.meta_id && t.usuario_id === uid && t.titulo === taskTitle
+          );
+
+          if (!alreadyExists) {
+            await dbService.createTask({
+              usuario_id: uid,
+              familia_id: goal.familia_id,
+              meta_id: goal.meta_id,
+              titulo: taskTitle,
+              categoria: (['Hogar', 'Estudio', 'Salud', 'Personal'].includes(goal.categoria) ? goal.categoria : 'Otros') as any,
+              hora_programada: goal.hora_sugerida || '09:00',
+              tiempo_estimado_min: 30,
+              origen: 'meta_automatica',
+              visible_familia: goal.visible_familia
+            });
+          }
+        }
+      }
+    }
+  },
+
+  evaluarCumplimientoMetas: async (familia_id: string) => {
+    const familyGoals = localDatabase.metas.filter(m => m.familia_id === familia_id);
+
+    for (const goal of familyGoals) {
+      const goalTasks = localDatabase.tareas.filter(t => t.meta_id === goal.meta_id);
+
+      if (goal.tipo === 'individual') {
+        const userTasks = goalTasks.filter(t => t.usuario_id === goal.usuario_id);
+        const total = userTasks.length;
+        const completed = userTasks.filter(t => t.estado === 'completada').length;
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        goal.porcentaje_semanal = pct;
+
+        if (pct < 100 && goal.consecuencias_activas) {
+          const alreadyHasPending = localDatabase.consecuenciasPendientes.some(
+            p => p.usuario_id === goal.usuario_id && p.familia_id === familia_id && p.estado === 'pendiente'
+          );
+
+          if (!alreadyHasPending) {
+            const plantilla = localDatabase.consecuenciasPlantillas.find(cp => cp.consecuencia_id === goal.consecuencia_id);
+            const consTitle = plantilla ? plantilla.titulo : "Lavar los platos de la cena";
+
+            if (goal.requiere_aprobacion_adulto) {
+              const newPendiente: ConsecuenciaPendiente = {
+                pendiente_id: `pendiente_${Date.now()}_${Math.random().toString(36).substring(2,6)}`,
+                familia_id: goal.familia_id,
+                usuario_id: goal.usuario_id,
+                meta_id: goal.meta_id,
+                meta_titulo: goal.titulo,
+                periodo: "Semana actual",
+                cumplimiento: `${completed}/${goal.frecuencia_objetivo || total}`,
+                consecuencia_sugerida_id: goal.consecuencia_id,
+                consecuencia_titulo: consTitle,
+                fecha_creacion: new Date().toISOString().split('T')[0],
+                estado: 'pendiente'
+              };
+              localDatabase.consecuenciasPendientes.push(newPendiente);
+              if (isFirestoreEnabled && db) {
+                await db.collection("consecuencias_pendientes").doc(newPendiente.pendiente_id).set(newPendiente);
+              }
+            } else {
+              await dbService.createTask({
+                usuario_id: goal.usuario_id,
+                familia_id: goal.familia_id,
+                meta_id: goal.meta_id,
+                titulo: `Consecuencia: ${consTitle}`,
+                categoria: 'Hogar',
+                hora_programada: '18:00',
+                tiempo_estimado_min: plantilla?.tiempo_estimado_min || 30,
+                origen: 'consecuencia',
+                visible_familia: true
+              });
+            }
+          }
+        }
+      } else {
+        const miembros = goal.miembros_asignados && goal.miembros_asignados.length > 0
+          ? goal.miembros_asignados
+          : (localDatabase.familias.find(f => f.familia_id === familia_id)?.miembros || [goal.usuario_id]);
+
+        const progreso_por_miembro = [];
+        let grandTotalPct = 0;
+
+        for (const uid of miembros) {
+          const memberTasks = goalTasks.filter(t => t.usuario_id === uid);
+          const total = memberTasks.length;
+          const completed = memberTasks.filter(t => t.estado === 'completada').length;
+          const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+          grandTotalPct += pct;
+
+          progreso_por_miembro.push({
+            usuario_id: uid,
+            periodos_cumplidos: completed,
+            periodos_totales: goal.frecuencia_objetivo || total || 1,
+            porcentaje: pct
+          });
+
+          if (pct < 100 && goal.consecuencias_activas) {
+            const alreadyHasPending = localDatabase.consecuenciasPendientes.some(
+              p => p.usuario_id === uid && p.familia_id === familia_id && p.estado === 'pendiente'
+            );
+
+            if (!alreadyHasPending) {
+              const plantilla = localDatabase.consecuenciasPlantillas.find(cp => cp.consecuencia_id === goal.consecuencia_id);
+              const consTitle = plantilla ? plantilla.titulo : "Lavar los platos de la cena";
+
+              if (goal.requiere_aprobacion_adulto) {
+                const newPendiente: ConsecuenciaPendiente = {
+                  pendiente_id: `pendiente_${Date.now()}_${Math.random().toString(36).substring(2,6)}`,
+                  familia_id: goal.familia_id,
+                  usuario_id: uid,
+                  meta_id: goal.meta_id,
+                  meta_titulo: goal.titulo,
+                  periodo: "Semana actual",
+                  cumplimiento: `${completed}/${goal.frecuencia_objetivo || total}`,
+                  consecuencia_sugerida_id: goal.consecuencia_id,
+                  consecuencia_titulo: consTitle,
+                  fecha_creacion: new Date().toISOString().split('T')[0],
+                  estado: 'pendiente'
+                };
+                localDatabase.consecuenciasPendientes.push(newPendiente);
+                if (isFirestoreEnabled && db) {
+                  await db.collection("consecuencias_pendientes").doc(newPendiente.pendiente_id).set(newPendiente);
+                }
+              } else {
+                await dbService.createTask({
+                  usuario_id: uid,
+                  familia_id: goal.familia_id,
+                  meta_id: goal.meta_id,
+                  titulo: `Consecuencia: ${consTitle}`,
+                  categoria: 'Hogar',
+                  hora_programada: '18:00',
+                  tiempo_estimado_min: plantilla?.tiempo_estimado_min || 30,
+                  origen: 'consecuencia',
+                  visible_familia: true
+                });
+              }
+            }
+          }
+        }
+
+        goal.progreso_por_miembro = progreso_por_miembro;
+        goal.porcentaje_semanal = miembros.length > 0 ? Math.round(grandTotalPct / miembros.length) : 0;
+      }
+
+      if (isFirestoreEnabled && db) {
+        await db.collection("metas").doc(goal.meta_id).set(goal, { merge: true });
+      }
+    }
+
+    return { success: true };
+  },
+
+  createConsequenceTemplate: async (plantilla: Partial<ConsecuenciaPlantilla>) => {
+    const consecuencia_id = `plantilla_${Date.now()}`;
+    const newPlantilla: ConsecuenciaPlantilla = {
+      consecuencia_id,
+      familia_id: plantilla.familia_id || "fam_kevin_admin",
+      titulo: plantilla.titulo!,
+      descripcion: plantilla.descripcion || "",
+      categoria: plantilla.categoria || "Hogar",
+      tiempo_estimado_min: Number(plantilla.tiempo_estimado_min) || 30,
+      creado_por: plantilla.creado_por || "kevin-admin-uid"
+    };
+
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("consecuencias_plantillas").doc(consecuencia_id).set(newPlantilla);
+      } catch (e) {
+        console.error("[Firestore createConsequenceTemplate Error]", e);
+      }
+    }
+
+    localDatabase.consecuenciasPlantillas.push(newPlantilla);
+    return { success: true, newPlantilla };
+  },
+
+  resolvePendingConsequence: async (pendiente_id: string, action: 'assign' | 'forgive') => {
+    const idx = localDatabase.consecuenciasPendientes.findIndex(p => p.pendiente_id === pendiente_id);
+    if (idx !== -1) {
+      const item = localDatabase.consecuenciasPendientes[idx];
+      item.estado = action === 'assign' ? 'asignada' : 'perdonada';
+
+      if (action === 'assign') {
+        const plantilla = localDatabase.consecuenciasPlantillas.find(c => c.consecuencia_id === item.consecuencia_sugerida_id);
+        const consTitle = item.consecuencia_titulo || plantilla?.titulo || "Tarea de Consecuencia";
+
+        await dbService.createTask({
+          usuario_id: item.usuario_id,
+          familia_id: item.familia_id,
+          meta_id: item.meta_id,
+          titulo: `Consecuencia: ${consTitle}`,
+          categoria: 'Hogar',
+          hora_programada: '18:00',
+          tiempo_estimado_min: plantilla?.tiempo_estimado_min || 30,
+          origen: 'consecuencia',
+          visible_familia: true
+        });
+      }
+
+      if (isFirestoreEnabled && db) {
+        await db.collection("consecuencias_pendientes").doc(pendiente_id).update({
+          estado: item.estado
+        });
+      }
+
+      return { success: true, estado: item.estado };
+    }
+    throw new Error("Consecuencia pendiente no encontrada.");
   },
 
   createJournalEntry: async (entry: Partial<DiarioEntrada>) => {

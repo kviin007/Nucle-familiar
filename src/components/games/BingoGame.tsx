@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Usuario } from '../../types';
 import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
-import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck } from 'lucide-react';
+import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface BingoGameProps {
@@ -70,32 +70,43 @@ export default function BingoGame({ partidaId, currentUser, usuarios, partidaDat
   const calledNumbers: number[] = localPartida?.numeros_cantados || [];
   const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
 
-  const players = localPartida?.jugadores || [];
+  const players: string[] = localPartida?.jugadores || [];
   const isHost = players[0] === currentUser.uid;
 
-  // Track host inactivity timeout (>20 seconds)
-  const lastUpdateMillis = localPartida?.ultima_actualizacion?.toMillis
-    ? localPartida.ultima_actualizacion.toMillis()
-    : localPartida?.ultima_actualizacion?.seconds
-    ? localPartida.ultima_actualizacion.seconds * 1000
-    : null;
+  // Helper to safely extract milliseconds from Firestore timestamp or JS Date
+  const getLastUpdateMillis = (partida: any) => {
+    const ts = partida?.ultima_actualizacion || partida?.creado_en;
+    if (!ts) return null;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+    if (typeof ts === 'number') return ts;
+    if (ts instanceof Date) return ts.getTime();
+    return null;
+  };
 
   const [secondsInactive, setSecondsInactive] = useState<number>(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (lastUpdateMillis) {
-        setSecondsInactive(Math.floor((Date.now() - lastUpdateMillis) / 1000));
+    const updateInactiveTime = () => {
+      const lastTs = getLastUpdateMillis(localPartida);
+      if (lastTs) {
+        const elapsed = Math.floor((Date.now() - lastTs) / 1000);
+        setSecondsInactive(Math.max(0, elapsed));
       } else {
-        setSecondsInactive(999);
+        setSecondsInactive(0);
       }
-    }, 1000);
+    };
+
+    updateInactiveTime();
+    const interval = setInterval(updateInactiveTime, 1000);
     return () => clearInterval(interval);
-  }, [lastUpdateMillis]);
+  }, [localPartida]);
 
-  const canCallNextNumber = isHost || secondsInactive > 20;
+  const TIMEOUT_SECONDS = 20;
+  const isHostInactive = secondsInactive >= TIMEOUT_SECONDS;
+  const canCallNextNumber = isHost || isHostInactive;
 
-  // Host (or active player if host >20s inactive) calls next number
+  // Host (or active player if host >=20s inactive) calls next number
   const handleCallNextNumber = async () => {
     if (localPartida?.estado === 'finalizada' || !canCallNextNumber) return;
 

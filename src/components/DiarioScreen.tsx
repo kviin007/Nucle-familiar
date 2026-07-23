@@ -26,6 +26,37 @@ export default function DiarioScreen({ diario, usuarios, onAddEntry }: DiarioScr
   });
   const [recognitionInstance, setRecognitionInstance] = useState<any>(null);
 
+  // Gemini AI Reflection state
+  const [reflectionLoading, setReflectionLoading] = useState<boolean>(false);
+  const [reflectionData, setReflectionData] = useState<{
+    reflection: string;
+    advice: string;
+    activityIdea: string;
+  } | null>(null);
+
+  const handleGetReflection = async () => {
+    if (!text.trim()) return;
+    setReflectionLoading(true);
+    try {
+      const res = await fetch('/api/gemini/journal-reflection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text.trim(),
+          emotion: mood
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReflectionData(data);
+      }
+    } catch (e) {
+      console.error("Error fetching journal reflection:", e);
+    } finally {
+      setReflectionLoading(false);
+    }
+  };
+
   const handleSave = () => {
     if (text.trim()) {
       onAddEntry(text.trim(), mood, visible);
@@ -168,14 +199,75 @@ export default function DiarioScreen({ diario, usuarios, onAddEntry }: DiarioScr
               </button>
             </div>
 
-            <button
-              onClick={handleSave}
-              className="w-full sm:w-auto px-6 py-3 bg-brand-primary hover:bg-brand-dark text-white rounded-full font-sans text-sm font-bold shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
-            >
-              <span className="material-symbols-outlined text-lg">save</span>
-              Guardar Entrada
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleGetReflection}
+                disabled={reflectionLoading || !text.trim()}
+                className="flex-1 sm:flex-none px-4 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full font-sans text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {reflectionLoading ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin text-base">sync</span>
+                    Reflexionando...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-amber-500 text-base">auto_awesome</span>
+                    Reflexión IA (Gemini)
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleSave}
+                className="flex-1 sm:flex-none px-6 py-3 bg-brand-primary hover:bg-brand-dark text-white rounded-full font-sans text-sm font-bold shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <span className="material-symbols-outlined text-lg">save</span>
+                Guardar
+              </button>
+            </div>
           </div>
+
+          {/* Gemini AI Reflection Card */}
+          {reflectionData && (
+            <div className="bg-gradient-to-br from-indigo-50/90 via-purple-50/80 to-amber-50/70 rounded-3xl p-5 border border-indigo-100 shadow-md space-y-3 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-amber-500 text-xl">auto_awesome</span>
+                  <h4 className="font-sans text-sm font-bold text-indigo-950">Reflexión de Gemini IA</h4>
+                </div>
+                <button 
+                  onClick={() => setReflectionData(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xs"
+                >
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              </div>
+
+              <p className="font-sans text-xs text-gray-800 leading-relaxed italic">
+                "{reflectionData.reflection}"
+              </p>
+
+              {reflectionData.advice && (
+                <div className="bg-white/80 p-3 rounded-2xl border border-indigo-100/60 text-xs text-indigo-900 flex items-start gap-2">
+                  <span className="material-symbols-outlined text-indigo-600 text-base shrink-0 mt-0.5">psychology</span>
+                  <div>
+                    <strong>Consejo:</strong> {reflectionData.advice}
+                  </div>
+                </div>
+              )}
+
+              {reflectionData.activityIdea && (
+                <div className="bg-amber-100/70 p-3 rounded-2xl border border-amber-200/60 text-xs text-amber-950 flex items-start gap-2">
+                  <span className="material-symbols-outlined text-amber-600 text-base shrink-0 mt-0.5">favorite</span>
+                  <div>
+                    <strong>Idea de Conexión:</strong> {reflectionData.activityIdea}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sidebar Decor / Memories list */}

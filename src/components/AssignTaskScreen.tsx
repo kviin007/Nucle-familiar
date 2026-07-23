@@ -37,6 +37,53 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
   const [success, setSuccess] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Gemini AI task generator state
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [suggestedTasks, setSuggestedTasks] = useState<Array<{
+    title: string;
+    category: TaskCategory;
+    estimatedTime: number;
+    isHighPriority: boolean;
+    points: number;
+    reasoning: string;
+  }>>([]);
+
+  const handleGenerateAiTasks = async () => {
+    setAiLoading(true);
+    try {
+      const selectedMember = usuarios.find((u) => u.uid === recipient);
+      const res = await fetch('/api/gemini/suggest-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userRole: selectedMember?.nombre || "Familiar",
+          theme: category || "Organización y hogar",
+          count: 3
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setSuggestedTasks(data);
+        }
+      }
+    } catch (e) {
+      console.error("Error generating AI tasks:", e);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applySuggestedTask = (task: typeof suggestedTasks[0]) => {
+    setTitle(task.title);
+    if (task.category && CATEGORIES.some(c => c.id === task.category)) {
+      setCategory(task.category);
+    }
+    setEstimatedTime(task.estimatedTime || 20);
+    setIsHighPriority(task.isHighPriority || false);
+    setDescription(`Sugerencia de Gemini IA: ${task.reasoning}`);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
@@ -177,6 +224,71 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
           </label>
         </div>
+
+        {/* Gemini AI Task Suggestion Trigger */}
+        <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-amber-300 flex items-center justify-center shadow-sm shrink-0">
+              <span className="material-symbols-outlined text-lg">auto_awesome</span>
+            </div>
+            <div>
+              <h4 className="font-sans text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                Generar Ideas de Tareas con Gemini IA
+                <span className="bg-indigo-600 text-white text-[9px] uppercase font-bold px-1.5 py-0.2 rounded-full">
+                  IA
+                </span>
+              </h4>
+              <p className="font-sans text-[11px] text-gray-600">Obtén recomendaciones inteligentes adaptadas al integrante y categoría.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerateAiTasks}
+            disabled={aiLoading}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-95 shrink-0 disabled:opacity-50"
+          >
+            {aiLoading ? (
+              <>
+                <span className="material-symbols-outlined animate-spin text-sm">sync</span>
+                Generando...
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-sm">sparkles</span>
+                Sugerir Tareas
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Suggested AI Tasks List */}
+        {suggestedTasks.length > 0 && (
+          <div className="space-y-2 bg-indigo-50/40 p-3.5 rounded-2xl border border-indigo-100">
+            <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider block">
+              Sugerencias de Gemini (Haz clic para usar):
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {suggestedTasks.map((st, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => applySuggestedTask(st)}
+                  className="p-3 bg-white hover:bg-indigo-50 border border-indigo-100 rounded-xl text-left transition-all hover:scale-[1.02] shadow-xs flex flex-col justify-between gap-2"
+                >
+                  <div>
+                    <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-md inline-block mb-1">
+                      {st.category} • {st.estimatedTime}m
+                    </span>
+                    <h5 className="font-sans text-xs font-bold text-gray-900 leading-snug">{st.title}</h5>
+                  </div>
+                  <span className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">add_circle</span> Cargar Tarea
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Task Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

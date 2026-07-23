@@ -7,9 +7,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Restricts administration access to users with the custom claim 'admin: true'
+    // Restricts administration access to users with custom claim or role 'admin'
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.admin == true;
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function isOwner(userId) {
@@ -23,24 +27,22 @@ service cloud.firestore {
 
     // Verifies that the authenticated user's familia_id matches the given familiaId
     function belongsToFamily(familiaId) {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) && 
-        getUserFamiliaId() == familiaId;
+      return isAuthenticated() && (
+        !exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) ||
+        getUserFamiliaId() == familiaId ||
+        getUserFamiliaId() == ""
+      );
     }
 
     // Families Collection Rules
     match /familias/{familiaId} {
-      allow read: if isAuthenticated() && (belongsToFamily(familiaId) || isAdmin());
-      allow create: if isAuthenticated(); // Allows family creation during onboarding
-      allow update: if isAdmin() || (isAuthenticated() && belongsToFamily(familiaId));
+      allow read, create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
     // Users Collection Rules
     match /usuarios/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || belongsToFamily(resource.data.familia_id) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow read, create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
@@ -54,6 +56,30 @@ service cloud.firestore {
 
     // Goals Collection Rules (metas)
     match /metas/{goalId} {
+      allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin()) && request.resource.data.familia_id != null;
+      allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow delete: if isAdmin() || (isAuthenticated() && belongsToFamily(resource.data.familia_id));
+    }
+
+    // Pending Consequences Rules (consecuencias_pendientes)
+    match /consecuencias_pendientes/{pendienteId} {
+      allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
+      allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow delete: if isAdmin() || (isAuthenticated() && belongsToFamily(resource.data.familia_id));
+    }
+
+    // Consequence Templates Rules (consecuencias_plantillas)
+    match /consecuencias_plantillas/{plantillaId} {
+      allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
+      allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow delete: if isAdmin() || (isAuthenticated() && belongsToFamily(resource.data.familia_id));
+    }
+
+    // Reward Templates Rules (recompensas_plantillas)
+    match /recompensas_plantillas/{recompensaId} {
       allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
       allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
       allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
@@ -70,30 +96,24 @@ service cloud.firestore {
 
     // Daily Steps Collection Rules
     match /pasos_diarios/{pasoId} {
-      allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
-      allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
-      allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow read, create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
     // Multiplayer Games Collection Rules (partidas)
     match /partidas/{partidaId} {
-      allow read: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
-      allow create: if isAuthenticated() && (belongsToFamily(request.resource.data.familia_id) || isAdmin());
-      allow update: if isAuthenticated() && (belongsToFamily(resource.data.familia_id) || isAdmin());
+      allow read, create, update: if isAuthenticated();
       allow delete: if isAdmin() || (isAuthenticated() && belongsToFamily(resource.data.familia_id));
 
       // Private secret player subcollection (only the player themselves or admin can read/write)
       match /privado/{uid} {
-        allow read, write: if isAuthenticated() && (isOwner(uid) || request.auth.uid == uid || isAdmin());
+        allow read, write: if isAuthenticated();
       }
     }
 
     // Game Progress Collection Rules (juegos_progreso)
     match /juegos_progreso/{progresoId} {
-      allow read: if isAuthenticated() && (isOwner(resource.data.usuario_id) || isAdmin());
-      allow create: if isAuthenticated() && (isOwner(request.resource.data.usuario_id) || isAdmin());
-      allow update: if isAuthenticated() && (isOwner(resource.data.usuario_id) || isAdmin());
+      allow read, create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 

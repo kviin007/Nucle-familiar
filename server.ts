@@ -221,9 +221,31 @@ async function startServer() {
     }
   });
 
-  // API Route: Create Goal
+  // API Route: Create Goal (Extended)
   app.post("/api/goals/create", async (req, res) => {
-    const { titulo, categoria, usuario_id, visible_familia, fecha_limite } = req.body;
+    const { 
+      titulo, 
+      categoria, 
+      usuario_id, 
+      familia_id,
+      tipo,
+      frecuencia_objetivo,
+      unidad_frecuencia,
+      duracion_valor,
+      duracion_unidad,
+      fecha_inicio,
+      fecha_fin,
+      miembros_asignados,
+      generar_tareas_automaticas,
+      dias_preferidos,
+      hora_sugerida,
+      consecuencias_activas,
+      consecuencia_id,
+      requiere_aprobacion_adulto,
+      visible_familia, 
+      fecha_limite 
+    } = req.body;
+
     if (!titulo || !categoria || !usuario_id) {
       return res.status(400).json({ error: "Título, categoría y usuario son obligatorios." });
     }
@@ -232,12 +254,76 @@ async function startServer() {
         titulo,
         categoria,
         usuario_id,
+        familia_id,
+        tipo,
+        frecuencia_objetivo,
+        unidad_frecuencia,
+        duracion_valor,
+        duracion_unidad,
+        fecha_inicio,
+        fecha_fin,
+        miembros_asignados,
+        generar_tareas_automaticas,
+        dias_preferidos,
+        hora_sugerida,
+        consecuencias_activas,
+        consecuencia_id,
+        requiere_aprobacion_adulto,
         visible_familia,
         fecha_limite
       });
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message || "Error al crear la meta." });
+    }
+  });
+
+  // API Route: Evaluate Goals Compliance
+  app.post("/api/goals/evaluate-compliance", async (req, res) => {
+    const { familia_id } = req.body;
+    if (!familia_id) {
+      return res.status(400).json({ error: "ID de familia es obligatorio." });
+    }
+    try {
+      const result = await dbService.evaluarCumplimientoMetas(familia_id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al evaluar cumplimiento de metas." });
+    }
+  });
+
+  // API Route: Create Consequence Template
+  app.post("/api/consequences/templates/create", async (req, res) => {
+    const { titulo, descripcion, categoria, tiempo_estimado_min, familia_id, creado_por } = req.body;
+    if (!titulo || !familia_id) {
+      return res.status(400).json({ error: "Título y ID de familia son obligatorios." });
+    }
+    try {
+      const result = await dbService.createConsequenceTemplate({
+        titulo,
+        descripcion,
+        categoria,
+        tiempo_estimado_min,
+        familia_id,
+        creado_por
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al crear la plantilla de consecuencia." });
+    }
+  });
+
+  // API Route: Resolve Pending Consequence
+  app.post("/api/consequences/pending/resolve", async (req, res) => {
+    const { pendiente_id, action } = req.body; // action: 'assign' | 'forgive'
+    if (!pendiente_id || !action) {
+      return res.status(400).json({ error: "pendiente_id y acción son obligatorios." });
+    }
+    try {
+      const result = await dbService.resolvePendingConsequence(pendiente_id, action);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al resolver la consecuencia pendiente." });
     }
   });
 
@@ -438,7 +524,7 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.6-flash",
         contents: prompt,
       });
 
@@ -500,6 +586,215 @@ async function startServer() {
           }
         ]);
       }
+    }
+  });
+
+  // API Route: Consejero Familiar Gemini AI (General Consultation / Family Advice)
+  app.post("/api/gemini/advisor", async (req, res) => {
+    const { prompt, context } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "El campo prompt es obligatorio." });
+    }
+
+    try {
+      const ai = getGeminiClient();
+      const systemInstruction = `Eres NúcleoIA, un consejero y asistente de convivencia familiar empático, positivo, organizado y experto en crianza respetuosa, organización del hogar, menús familiares equilibrados y mediación de conflictos. Responde siempre en español con tono cálido, directo y constructivo. Devuelve la respuesta en formato JSON con la siguiente estructura: { "response": "tu respuesta principal explicativa y empática", "tips": ["consejo práctico 1", "consejo práctico 2", "consejo práctico 3"], "suggestedAction": "una acción concreta para la familia hoy" }.`;
+
+      const userMessage = `${context ? `[Contexto Familiar: ${context}]\n` : ""}${prompt}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: userMessage,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se obtuvo respuesta del modelo Gemini.");
+      }
+
+      const parsed = parseCleanJson(response.text);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("[Gemini Advisor Error]", err);
+      // Fallback response if offline or key not ready
+      res.json({
+        response: `Excelente consulta sobre "${prompt}". La comunicación abierta y las rutinas predecibles ayudan a fortalecer la armonía familiar.`,
+        tips: [
+          "Establezcan un momento diario para conversar sobre cómo se sienten.",
+          "Involucren a todos los miembros en las decisiones de la casa.",
+          "Celebren los pequeños logros de cada día en familia."
+        ],
+        suggestedAction: "Planificar juntos las actividades de este fin de semana."
+      });
+    }
+  });
+
+  // API Route: Sugerir Tareas Inteligentes con Gemini AI
+  app.post("/api/gemini/suggest-tasks", async (req, res) => {
+    const { userRole, theme, count } = req.body;
+    const taskCount = count || 3;
+
+    try {
+      const ai = getGeminiClient();
+      const prompt = `Genera exactamente ${taskCount} tareas del hogar o hábitos sugeridos en español para una app de organización familiar. 
+Rol del integrante: "${userRole || "Cualquier integrante"}".
+Tema o enfoque: "${theme || "Organización diaria del hogar y bienestar"}".
+Cada tarea debe tener:
+- "title": Título claro y motivador de la tarea (máx 8 palabras).
+- "category": Una de las siguientes categorías exactas: "Hogar", "Estudio", "Salud", "Personal", "Otros".
+- "estimatedTime": Tiempo estimado en minutos (número, ej. 15, 20, 30, 45).
+- "isHighPriority": booleano (true o false).
+- "points": Puntos recompensa sugeridos (número entre 10 y 50).
+- "reasoning": Breve razón de por qué esta tarea beneficia a la familia.
+
+Devuelve ÚNICAMENTE un array JSON válido de objetos con esas propiedades. Sin markdown.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se obtuvo respuesta del modelo Gemini.");
+      }
+
+      const tasks = parseCleanJson(response.text);
+      res.json(tasks);
+    } catch (err: any) {
+      console.error("[Gemini Suggest Tasks Error]", err);
+      // Fallback tasks
+      res.json([
+        {
+          title: "Organizar y limpiar el escritorio de estudio",
+          category: "Estudio",
+          estimatedTime: 20,
+          isHighPriority: false,
+          points: 25,
+          reasoning: "Un espacio ordenado mejora la concentración y reduce el estrés."
+        },
+        {
+          title: "Preparar mochilas y ropa para el día siguiente",
+          category: "Hogar",
+          estimatedTime: 15,
+          isHighPriority: true,
+          points: 30,
+          reasoning: "Asegura mañanas tranquilas sin prisas ni olvidos."
+        },
+        {
+          title: "Caminata o estiramiento en familia (15 mins)",
+          category: "Salud",
+          estimatedTime: 15,
+          isHighPriority: false,
+          points: 20,
+          reasoning: "Promueve el movimiento físico y el tiempo compartido."
+        }
+      ]);
+    }
+  });
+
+  // API Route: Sugerir Metas Familiares con Gemini AI
+  app.post("/api/gemini/suggest-goals", async (req, res) => {
+    const { category, familyContext } = req.body;
+
+    try {
+      const ai = getGeminiClient();
+      const prompt = `Genera 3 metas familiares o personales inspiradoras en español para la categoría "${category || "Hogar"}". ${familyContext ? `Contexto familiar: ${familyContext}` : ""}
+Cada meta debe incluir:
+- "title": Título inspirador y concreto (ej. "Comer juntos en la mesa 5 días a la semana").
+- "category": Categoría exactas ("Salud", "Estudio", "Finanzas", "Hogar", "Personal").
+- "description": Breve descripción motivacional (1-2 oraciones).
+- "milestones": Lista con 3 pasos o hitos clave para alcanzar la meta.
+
+Devuelve ÚNICAMENTE un array JSON válido de objetos con esas propiedades. Sin markdown.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se obtuvo respuesta del modelo.");
+      }
+
+      const goals = parseCleanJson(response.text);
+      res.json(goals);
+    } catch (err: any) {
+      console.error("[Gemini Suggest Goals Error]", err);
+      res.json([
+        {
+          title: "Noche de Juegos y Convivencia Semanal",
+          category: category || "Hogar",
+          description: "Desconectar de las pantallas los viernes por la noche para jugar en familia.",
+          milestones: [
+            "Elegir los juegos preferidos de cada integrante",
+            "Fijar el horario de los viernes a las 7 PM",
+            "Preparar snacks o merienda especial juntos"
+          ]
+        },
+        {
+          title: "Ahorro Familiar para Actividad Especial",
+          category: "Finanzas",
+          description: "Juntar un fondo en familia para una salida especial a fin de mes.",
+          milestones: [
+            "Definir el destino o la actividad familiar",
+            "Anotar los aportes o puntos semanales",
+            "Revisar el progreso cada domingo"
+          ]
+        }
+      ]);
+    }
+  });
+
+  // API Route: Reflexión de Diario Familiar con Gemini AI
+  app.post("/api/gemini/journal-reflection", async (req, res) => {
+    const { text, emotion } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: "El texto del diario es obligatorio." });
+    }
+
+    try {
+      const ai = getGeminiClient();
+      const prompt = `Un miembro de la familia escribió esta entrada en su diario expresando la emoción "${emotion || "neutral"}":
+"${text}"
+
+Proporciona una reflexión empática y cálida en español (estilo consejero familiar) que motive a la persona y dé una sugerencia positiva.
+Devuelve ÚNICAMENTE un JSON con la estructura:
+{
+  "reflection": "Mensaje reflexivo cálido y motivador",
+  "advice": "Un consejo práctico para afrontar o celebrar el momento",
+  "activityIdea": "Una pequeña idea o detalle para conectar con la familia hoy"
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("Sin respuesta del modelo.");
+      }
+
+      const reflection = parseCleanJson(response.text);
+      res.json(reflection);
+    } catch (err: any) {
+      console.error("[Gemini Journal Reflection Error]", err);
+      res.json({
+        reflection: "Gracias por compartir tus sentimientos. Registrar lo que vivimos cada día es un paso valioso para conocernos y valorar lo importante.",
+        advice: "Tómate un momento para respirar profundo y compartir este sentir con alguien de confianza.",
+        activityIdea: "Disfruten de una bebida caliente juntos y compartan lo mejor de su día."
+      });
     }
   });
 

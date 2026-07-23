@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia } from './types';
+import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from './types';
 import OnboardingScreen, { OnboardingData } from './components/OnboardingScreen';
 import HoyScreen from './components/HoyScreen';
 import MetasScreen from './components/MetasScreen';
@@ -12,6 +12,7 @@ import AssignTaskScreen from './components/AssignTaskScreen';
 import UserDetailScreen from './components/UserDetailScreen';
 import CodeExporterScreen from './components/CodeExporterScreen';
 import FocusModeOverlay from './components/FocusModeOverlay';
+import GeminiAdvisorModal from './components/GeminiAdvisorModal';
 
 // Import Firebase Authentication and Firestore if available
 import { 
@@ -25,6 +26,10 @@ import {
   onAuthStateChanged,
   getIdTokenResult,
   collection,
+  doc,
+  setDoc,
+  query,
+  where,
   onSnapshot
 } from './lib/firebase';
 
@@ -42,8 +47,12 @@ export default function App() {
   const [metas, setMetas] = useState<Meta[]>([]);
   const [diario, setDiario] = useState<DiarioEntrada[]>([]);
   const [familias, setFamilias] = useState<Familia[]>([]);
+  const [consecuenciasPlantillas, setConsecuenciasPlantillas] = useState<ConsecuenciaPlantilla[]>([]);
+  const [recompensasPlantillas, setRecompensasPlantillas] = useState<RecompensaPlantilla[]>([]);
+  const [consecuenciasPendientes, setConsecuenciasPendientes] = useState<ConsecuenciaPendiente[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
+  const [isGeminiAdvisorOpen, setIsGeminiAdvisorOpen] = useState<boolean>(false);
 
   // Toast System
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
@@ -77,37 +86,72 @@ export default function App() {
 
   // Real-time Firestore Listeners (onSnapshot)
   useEffect(() => {
-    if (!firestore) return;
+    if (!firestore || !currentUser?.familia_id) return;
 
-    const unsubTareas = onSnapshot(collection(firestore, "tareas_diarias"), (snap) => {
+    const famId = currentUser.familia_id;
+
+    // Real-time listener for tasks (filtered by familia_id)
+    const qTareas = query(collection(firestore, "tareas_diarias"), where("familia_id", "==", famId));
+    const unsubTareas = onSnapshot(qTareas, (snap) => {
       const list: TareaDiaria[] = [];
       snap.forEach(d => list.push({ tarea_id: d.id, ...d.data() } as TareaDiaria));
       setTareas(list);
-    }, () => showToast("Error al cargar tareas en vivo", "error", () => fetchState()));
+    }, (err) => {
+      console.warn("Sync tareas warning:", err);
+    });
 
-    const unsubMetas = onSnapshot(collection(firestore, "metas"), (snap) => {
+    // Real-time listener for goals (filtered by familia_id)
+    const qMetas = query(collection(firestore, "metas"), where("familia_id", "==", famId));
+    const unsubMetas = onSnapshot(qMetas, (snap) => {
       const list: Meta[] = [];
       snap.forEach(d => list.push({ meta_id: d.id, ...d.data() } as Meta));
       setMetas(list);
-    }, () => showToast("Error al cargar metas en vivo", "error", () => fetchState()));
+    }, (err) => {
+      console.warn("Sync metas warning:", err);
+    });
 
-    const unsubUsuarios = onSnapshot(collection(firestore, "usuarios"), (snap) => {
+    // Real-time listener for family members (filtered by familia_id)
+    const qUsuarios = query(collection(firestore, "usuarios"), where("familia_id", "==", famId));
+    const unsubUsuarios = onSnapshot(qUsuarios, (snap) => {
       const list: Usuario[] = [];
       snap.forEach(d => list.push({ uid: d.id, ...d.data() } as Usuario));
       setUsuarios(list);
-    }, () => showToast("Error al cargar usuarios en vivo", "error", () => fetchState()));
+    }, (err) => {
+      console.warn("Sync usuarios warning:", err);
+    });
 
-    const unsubFamilias = onSnapshot(collection(firestore, "familias"), (snap) => {
-      const list: Familia[] = [];
-      snap.forEach(d => list.push({ familia_id: d.id, ...d.data() } as Familia));
-      setFamilias(list);
-    }, () => showToast("Error al cargar familias en vivo", "error", () => fetchState()));
+    // Real-time listener for active family document
+    const unsubFamilias = onSnapshot(doc(firestore, "familias", famId), (snap) => {
+      if (snap.exists()) {
+        const famData = { familia_id: snap.id, ...snap.data() } as Familia;
+        setFamilias(prev => {
+          const exists = prev.some(f => f.familia_id === famData.familia_id);
+          return exists ? prev.map(f => f.familia_id === famData.familia_id ? famData : f) : [...prev, famData];
+        });
+      }
+    }, (err) => {
+      console.warn("Sync familia warning:", err);
+    });
 
-    const unsubDiario = onSnapshot(collection(firestore, "diario"), (snap) => {
+    // Real-time listener for journal entries (filtered by familia_id)
+    const qDiario = query(collection(firestore, "diario"), where("familia_id", "==", famId));
+    const unsubDiario = onSnapshot(qDiario, (snap) => {
       const list: DiarioEntrada[] = [];
       snap.forEach(d => list.push({ entrada_id: d.id, ...d.data() } as DiarioEntrada));
       setDiario(list);
-    }, () => showToast("Error al cargar diario en vivo", "error", () => fetchState()));
+    }, (err) => {
+      console.warn("Sync diario warning:", err);
+    });
+
+    // Real-time listener for pending consequences
+    const qPendientes = query(collection(firestore, "consecuencias_pendientes"), where("familia_id", "==", famId));
+    const unsubPendientes = onSnapshot(qPendientes, (snap) => {
+      const list: ConsecuenciaPendiente[] = [];
+      snap.forEach(d => list.push({ pendiente_id: d.id, ...d.data() } as ConsecuenciaPendiente));
+      setConsecuenciasPendientes(list);
+    }, (err) => {
+      console.warn("Sync consecuencias pendientes warning:", err);
+    });
 
     return () => {
       unsubTareas();
@@ -115,8 +159,9 @@ export default function App() {
       unsubUsuarios();
       unsubFamilias();
       unsubDiario();
+      unsubPendientes();
     };
-  }, []);
+  }, [currentUser?.familia_id]);
 
   // Fetch full synchronized state from backend Express API
   const fetchState = async () => {
@@ -129,6 +174,9 @@ export default function App() {
         setMetas(data.metas || []);
         setDiario(data.diario || []);
         setFamilias(data.familias || []);
+        setConsecuenciasPlantillas(data.consecuenciasPlantillas || []);
+        setRecompensasPlantillas(data.recompensasPlantillas || []);
+        setConsecuenciasPendientes(data.consecuenciasPendientes || []);
 
         // Sync local current user's details if modified on server
         if (currentUser) {
@@ -185,6 +233,14 @@ export default function App() {
                 avatar_url: uData.updatedUser?.avatar_url || firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
                 familia_id: uData.updatedUser?.familia_id || ""
               };
+
+              if (firestore) {
+                try {
+                  await setDoc(doc(firestore, "usuarios", firebaseUser.uid), profile, { merge: true });
+                } catch (e) {
+                  console.warn("Could not save user profile to firestore client directly", e);
+                }
+              }
 
               setCurrentUser(profile);
               await fetchState();
@@ -371,23 +427,74 @@ export default function App() {
     }
   };
 
-  const handleAddGoal = async (titulo: string, categoria: Meta['categoria']) => {
+  const handleAddGoal = async (goalData: Partial<Meta> | string, cat?: Meta['categoria']) => {
     if (!currentUser) return;
     try {
+      const payload = typeof goalData === 'string'
+        ? { titulo: goalData, categoria: cat || 'Hogar', usuario_id: currentUser.uid, familia_id: currentUser.familia_id }
+        : { usuario_id: currentUser.uid, familia_id: currentUser.familia_id, ...goalData };
+
       const res = await fetch('/api/goals/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo,
-          categoria,
-          usuario_id: currentUser.uid
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         await fetchState();
       }
     } catch (e) {
       console.error("Error creating goal", e);
+    }
+  };
+
+  const handleCreateConsequenceTemplate = async (template: Partial<ConsecuenciaPlantilla>) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch('/api/consequences/templates/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          familia_id: currentUser.familia_id || "fam_kevin_admin",
+          creado_por: currentUser.uid,
+          ...template
+        })
+      });
+      if (res.ok) {
+        await fetchState();
+      }
+    } catch (e) {
+      console.error("Error creating consequence template", e);
+    }
+  };
+
+  const handleResolvePendingConsequence = async (pendiente_id: string, action: 'assign' | 'forgive') => {
+    try {
+      const res = await fetch('/api/consequences/pending/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendiente_id, action })
+      });
+      if (res.ok) {
+        await fetchState();
+      }
+    } catch (e) {
+      console.error("Error resolving pending consequence", e);
+    }
+  };
+
+  const handleEvaluateCompliance = async () => {
+    try {
+      const res = await fetch('/api/goals/evaluate-compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ familia_id: currentUser?.familia_id || "fam_kevin_admin" })
+      });
+      if (res.ok) {
+        await fetchState();
+        showToast("Evaluación de metas completada con éxito 📊", "success");
+      }
+    } catch (e) {
+      console.error("Error evaluating compliance", e);
     }
   };
 
@@ -892,6 +999,15 @@ export default function App() {
 
           <div className="h-px bg-slate-100 my-4" />
 
+          {/* Gemini AI Assistant Button */}
+          <button
+            onClick={() => setIsGeminiAdvisorOpen(true)}
+            className="flex items-center gap-3 px-4 py-3 rounded-2xl font-sans text-xs font-bold transition-all text-left cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md hover:shadow-lg hover:opacity-95"
+          >
+            <span className="material-symbols-outlined text-lg text-amber-300">auto_awesome</span>
+            <span>Asistente Gemini IA</span>
+          </button>
+
           {/* Dev Code Exporter */}
           <button
             key="code-exporter"
@@ -942,6 +1058,15 @@ export default function App() {
           <h1 className="font-sans text-base font-extrabold text-brand-dark">Núcleo Familiar</h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* Gemini AI Advisor Button */}
+          <button
+            onClick={() => setIsGeminiAdvisorOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-sans text-xs font-bold shadow-xs cursor-pointer hover:opacity-95"
+          >
+            <span className="material-symbols-outlined text-sm text-amber-300">auto_awesome</span>
+            <span>IA</span>
+          </button>
+
           {/* Quick sync */}
           <button
             onClick={handleResetDatabase}
@@ -1003,7 +1128,17 @@ export default function App() {
               />
             )}
             {view === 'metas' && (
-              <MetasScreen metas={metas} usuarios={usuarios} onAddGoal={handleAddGoal} />
+              <MetasScreen
+                metas={metas}
+                usuarios={usuarios}
+                currentUser={currentUser}
+                consecuenciasPlantillas={consecuenciasPlantillas}
+                consecuenciasPendientes={consecuenciasPendientes}
+                onAddGoal={handleAddGoal}
+                onCreateConsequenceTemplate={handleCreateConsequenceTemplate}
+                onResolvePendingConsequence={handleResolvePendingConsequence}
+                onEvaluateCompliance={handleEvaluateCompliance}
+              />
             )}
             {view === 'familia' && (
               <FamiliaScreen 
@@ -1162,6 +1297,13 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* Gemini AI Advisor Modal */}
+      <GeminiAdvisorModal
+        isOpen={isGeminiAdvisorOpen}
+        onClose={() => setIsGeminiAdvisorOpen(false)}
+        familyName={familias[0]?.nombre}
+      />
     </div>
   );
 }

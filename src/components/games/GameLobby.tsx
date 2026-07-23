@@ -50,20 +50,22 @@ export default function GameLobby({
 
     const q = query(
       collection(firestore, "partidas"),
-      where("familia_id", "==", currentUser.familia_id),
-      where("game_type", "==", gameType)
+      where("familia_id", "==", currentUser.familia_id)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
       const list: any[] = [];
       snapshot.forEach(docSnap => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        const data = docSnap.data();
+        if (data.game_type === gameType) {
+          list.push({ id: docSnap.id, ...data });
+        }
       });
       setActivePartidas(list);
       setLoading(false);
       setIndexErrorUrl(null);
     }, (err: any) => {
-      console.error("Error fetching partidas lobby:", err);
+      console.warn("Error fetching partidas lobby:", err);
       setLoading(false);
       if (err?.message) {
         const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
