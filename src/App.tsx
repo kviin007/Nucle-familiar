@@ -6,6 +6,7 @@ import HoyScreen from './components/HoyScreen';
 import MetasScreen from './components/MetasScreen';
 import FamiliaScreen from './components/FamiliaScreen';
 import DiarioScreen from './components/DiarioScreen';
+import IdeasScreen from './components/IdeasScreen';
 import JuegosScreen from './components/JuegosScreen';
 import AdminPanelDashboard from './components/AdminPanelDashboard';
 import FamilyNetworkScreen from './components/FamilyNetworkScreen';
@@ -1107,6 +1108,7 @@ export default function App() {
             { id: 'metas', label: 'Metas', icon: 'target' },
             { id: 'familia', label: 'Familia', icon: 'group' },
             { id: 'diario', label: 'Diario', icon: 'menu_book' },
+            { id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' },
             { id: 'juegos', label: 'Juegos', icon: 'sports_esports' },
           ].map((item) => (
             <button
@@ -1320,6 +1322,22 @@ export default function App() {
                 onAddReaction={handleAddJournalReaction}
               />
             )}
+            {view === 'ideas' && (
+              <IdeasScreen
+                currentUser={currentUser}
+                onAddTask={(taskData: any) => handleAddTask(
+                  taskData.titulo,
+                  taskData.usuario_id,
+                  taskData.hora_programada,
+                  taskData.tiempo_estimado_min,
+                  taskData.visible_familia,
+                  taskData.categoria,
+                  taskData.es_prioridad_alta
+                )}
+                onAddGoal={(goalData: any) => handleAddGoal(goalData)}
+                showToast={showToast}
+              />
+            )}
             {view === 'juegos' && (
               <JuegosScreen
                 currentUser={currentUser}
@@ -1384,8 +1402,9 @@ export default function App() {
         {[
           { id: 'hoy', label: 'Hoy', icon: 'home' },
           { id: 'metas', label: 'Metas', icon: 'target' },
-          { id: 'familia', label: 'Familia', icon: 'group' },
           { id: 'diario', label: 'Diario', icon: 'menu_book' },
+          { id: 'ideas', label: 'Ideas', icon: 'lightbulb' },
+          { id: 'familia', label: 'Familia', icon: 'group' },
         ].map((item) => (
           <button
             key={item.id}

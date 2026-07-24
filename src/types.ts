@@ -160,6 +160,31 @@ export interface Frase {
   autor: string;
 }
 
+export interface OrganizedIdeaStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  estimatedTime: string;
+  category?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
+}
+
+export interface OrganizedIdea {
+  idea_id?: string;
+  title: string;
+  summary: string;
+  category: string;
+  estimatedDuration: string;
+  difficulty: string;
+  steps: OrganizedIdeaStep[];
+  suggestedGoal?: {
+    title: string;
+    frequency: string;
+    recommendation: string;
+  };
+  encouragement: string;
+  createdAt?: string;
+}
+
 export type ViewType =
   | 'onboarding'
   | 'login'
@@ -167,6 +192,7 @@ export type ViewType =
   | 'metas'
   | 'familia'
   | 'diario'
+  | 'ideas'
   | 'juegos'
   | 'admin-dashboard'
   | 'admin-families'

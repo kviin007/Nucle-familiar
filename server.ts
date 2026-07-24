@@ -847,6 +847,104 @@ Devuelve ÚNICAMENTE un JSON con la estructura:
     }
   });
 
+  // API Route: Organizar Ideas con Gemini AI
+  app.post("/api/gemini/organize-idea", async (req, res) => {
+    const { ideaText, category } = req.body;
+    if (!ideaText || !ideaText.trim()) {
+      return res.status(400).json({ error: "El texto de la idea es obligatorio." });
+    }
+
+    try {
+      const ai = getGeminiClient();
+      const prompt = `Un usuario introdujo la siguiente idea en su laboratorio de ideas:
+"${ideaText.trim()}"
+${category ? `Categoría sugerida: ${category}` : ""}
+
+Actúa como un estratega de proyectos e Inteligencia Artificial experto en estructuración de proyectos personales, profesionales y familiares.
+Analiza la idea y organízala de forma muy clara, pragmática y altamente motivadora.
+Estructura la respuesta exclusivamente como un objeto JSON con las siguientes propiedades exactas:
+{
+  "title": "Un título conciso e inspirador para la idea (máx 8 palabras)",
+  "summary": "Resumen ejecutivo claro de la idea y su propósito principal (2-3 frases)",
+  "category": "Una categoría entre: 'Hogar', 'Estudio', 'Salud', 'Finanzas', 'Personal', 'Creativo', 'Proyecto'",
+  "estimatedDuration": "Estimación del tiempo total o alcance (ej. '2 semanas', '1 mes', '3 días')",
+  "difficulty": "Nivel de dificultad: 'Fácil', 'Moderado' o 'Avanzado'",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Título corto del paso 1",
+      "description": "Explicación clara y concreta de lo que se debe hacer en este paso",
+      "estimatedTime": "Tiempo estimado (ej. 15 min, 1 hora, 1 día)",
+      "category": "Una categoría entre: 'Hogar', 'Estudio', 'Salud', 'Personal', 'Otros'"
+    }
+  ],
+  "suggestedGoal": {
+    "title": "Título sugerido si se convierte en Meta semanal/mensual",
+    "frequency": "ej. 3 veces por semana durante 1 mes",
+    "recommendation": "Recomendación para mantener la constancia"
+  },
+  "encouragement": "Un mensaje breve de motivación para empezar hoy mismo"
+}
+
+Genera entre 3 y 5 pasos secuenciales lógicos en el array "steps".
+Devuelve ÚNICAMENTE el JSON válido. Sin formato markdown ni texto adicional.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se obtuvo respuesta del modelo Gemini.");
+      }
+
+      const structuredIdea = parseCleanJson(response.text);
+      res.json(structuredIdea);
+    } catch (err: any) {
+      console.error("[Gemini Organize Idea Error]", err);
+      // Fallback structured idea if offline or key missing
+      res.json({
+        title: `Proyecto: ${ideaText.trim().slice(0, 30)}...`,
+        summary: `Estructura paso a paso para llevar a la realidad tu idea: "${ideaText.trim()}".`,
+        category: category || "Proyecto",
+        estimatedDuration: "2 semanas",
+        difficulty: "Moderado",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Definir alcance y recursos necesarios",
+            description: "Anotar materiales, presupuesto y espacio o tiempo requerido antes de iniciar.",
+            estimatedTime: "30 min",
+            category: "Personal"
+          },
+          {
+            stepNumber: 2,
+            title: "Realizar una primera prueba o prototipo",
+            description: "Ejecutar una versión simplificada inicial para validar la viabilidad.",
+            estimatedTime: "1 hora",
+            category: "Proyecto"
+          },
+          {
+            stepNumber: 3,
+            title: "Implementación completa y seguimiento",
+            description: "Llevar a cabo la idea involucrando a la familia o equipo y midiendo avances.",
+            estimatedTime: "2 horas",
+            category: "Hogar"
+          }
+        ],
+        suggestedGoal: {
+          title: `Meta: ${ideaText.trim().slice(0, 25)}`,
+          frequency: "2 veces por semana durante 1 mes",
+          recommendation: "Separar bloques fijos en la agenda para avanzar sin interrupciones."
+        },
+        encouragement: "¡Toda gran obra comenzó como una simple idea! Da el primer paso hoy."
+      });
+    }
+  });
+
   // Vite integration / Static Assets serving
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
