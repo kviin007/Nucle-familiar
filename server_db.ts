@@ -404,6 +404,54 @@ export const dbService = {
     throw new Error("Tarea no encontrada.");
   },
 
+  snoozeTask: async (tarea_id: string, minutesToSnooze?: number, exactTime?: string) => {
+    let newHora = exactTime || "";
+
+    if (isFirestoreEnabled && db) {
+      try {
+        const taskRef = db.collection("tareas_diarias").doc(tarea_id);
+        const taskSnap = await taskRef.get();
+        if (taskSnap.exists) {
+          const task = taskSnap.data() as TareaDiaria;
+          if (!newHora && minutesToSnooze) {
+            const [h, m] = (task.hora_programada || "10:00").split(':').map(Number);
+            const date = new Date();
+            date.setHours(h || 0, (m || 0) + minutesToSnooze, 0, 0);
+            newHora = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+          }
+
+          if (!newHora) newHora = "12:00";
+
+          const updates: any = {
+            hora_programada: newHora,
+            ultima_actualizacion: FieldValue.serverTimestamp()
+          };
+          await taskRef.update(updates);
+          return { success: true, newHora };
+        }
+      } catch (err) {
+        console.error("[Firestore snoozeTask Error]", err);
+      }
+    }
+
+    const taskIndex = localDatabase.tareas.findIndex(t => t.tarea_id === tarea_id);
+    if (taskIndex !== -1) {
+      const task = localDatabase.tareas[taskIndex];
+      if (!newHora && minutesToSnooze) {
+        const [h, m] = (task.hora_programada || "10:00").split(':').map(Number);
+        const date = new Date();
+        date.setHours(h || 0, (m || 0) + minutesToSnooze, 0, 0);
+        newHora = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+      }
+      if (!newHora) newHora = "12:00";
+
+      localDatabase.tareas[taskIndex].hora_programada = newHora;
+      localDatabase.tareas[taskIndex].ultima_actualizacion = new Date().toISOString();
+      return { success: true, newHora };
+    }
+    throw new Error("Tarea no encontrada.");
+  },
+
   createTask: async (task: Partial<TareaDiaria>) => {
     const tarea_id = `tarea_${Date.now()}`;
     const newTask: TareaDiaria = {
@@ -413,6 +461,8 @@ export const dbService = {
       titulo: task.titulo!,
       categoria: task.categoria || "Otros",
       es_prioridad_alta: !!task.es_prioridad_alta,
+      es_critica: !!task.es_critica,
+      config_critica: task.config_critica,
       hora_programada: task.hora_programada || "12:00",
       tiempo_estimado_min: Number(task.tiempo_estimado_min) || 30,
       estado: "pendiente",

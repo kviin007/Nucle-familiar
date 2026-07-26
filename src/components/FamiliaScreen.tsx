@@ -19,7 +19,7 @@ const AVATAR_PRESETS = [
   { name: 'Espacio', url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=150&h=150&fit=crop' },
 ];
 
-export default function FamiliaScreen({ usuarios, tareas, onInviteClick, onUpdateUser, currentUser, familias, onSelectUser }: FamiliaScreenProps) {
+export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClick, onUpdateUser, currentUser, familias = [], onSelectUser }: FamiliaScreenProps) {
   // Determine dynamic family based on logged-in user
   const activeUser = usuarios.find(u => u.uid === currentUser?.uid) || currentUser;
   const userFamilyId = activeUser?.familia_id || "";

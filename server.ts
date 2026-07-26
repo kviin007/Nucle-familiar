@@ -198,9 +198,23 @@ async function startServer() {
     }
   });
 
+  // API Route: Snooze / Aplazar Task
+  app.post("/api/tasks/snooze", async (req, res) => {
+    const { tarea_id, minutesToSnooze, exactTime } = req.body;
+    if (!tarea_id) {
+      return res.status(400).json({ error: "ID de tarea es obligatorio." });
+    }
+    try {
+      const result = await dbService.snoozeTask(tarea_id, minutesToSnooze, exactTime);
+      res.json(result);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message || "Error al aplazar la tarea." });
+    }
+  });
+
   // API Route: Create Task
   app.post("/api/tasks/create", async (req, res) => {
-    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id, categoria, es_prioridad_alta } = req.body;
+    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id, categoria, es_prioridad_alta, es_critica, config_critica } = req.body;
     if (!titulo || !usuario_id) {
       return res.status(400).json({ error: "Título y destinatario son obligatorios." });
     }
@@ -213,7 +227,9 @@ async function startServer() {
         visible_familia,
         meta_id,
         categoria,
-        es_prioridad_alta
+        es_prioridad_alta,
+        es_critica,
+        config_critica
       });
       res.json(result);
     } catch (e: any) {

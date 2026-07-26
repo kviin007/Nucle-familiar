@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Usuario } from '../types';
+import { Usuario, ConfigTareaCritica } from '../types';
 
 export type TaskCategory = 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
 
@@ -12,24 +12,86 @@ interface AssignTaskScreenProps {
     estimatedTime: number,
     visible: boolean,
     category?: TaskCategory,
-    esPrioridadAlta?: boolean
+    esPrioridadAlta?: boolean,
+    esCritica?: boolean,
+    configCritica?: ConfigTareaCritica
   ) => void;
 }
 
-const CATEGORIES: { id: TaskCategory; label: string; icon: string; color: string }[] = [
-  { id: 'Hogar', label: 'Hogar (Household)', icon: 'home', color: 'bg-amber-500 text-white' },
-  { id: 'Estudio', label: 'Estudio (Study)', icon: 'school', color: 'bg-indigo-500 text-white' },
-  { id: 'Salud', label: 'Bienestar / Salud (Wellness)', icon: 'favorite', color: 'bg-emerald-500 text-white' },
+const DEFAULT_CATEGORIES: { id: string; label: string; icon: string; color: string }[] = [
+  { id: 'Hogar', label: 'Hogar', icon: 'home', color: 'bg-amber-500 text-white' },
+  { id: 'Estudio', label: 'Estudio', icon: 'school', color: 'bg-indigo-500 text-white' },
+  { id: 'Salud', label: 'Bienestar / Salud', icon: 'favorite', color: 'bg-emerald-500 text-white' },
   { id: 'Personal', label: 'Personal', icon: 'person', color: 'bg-purple-500 text-white' },
   { id: 'Otros', label: 'Otros', icon: 'more_horiz', color: 'bg-slate-500 text-white' },
 ];
 
 export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScreenProps) {
+  const [categoriesList, setCategoriesList] = useState<Array<{ id: string; label: string; icon: string; color: string }>>(() => {
+    try {
+      const savedMetas = localStorage.getItem('custom_meta_categories');
+      if (savedMetas) {
+        const parsed: string[] = JSON.parse(savedMetas);
+        const merged = [...DEFAULT_CATEGORIES];
+        parsed.forEach(cName => {
+          if (!merged.some(item => item.id.toLowerCase() === cName.toLowerCase())) {
+            merged.push({
+              id: cName,
+              label: cName,
+              icon: 'label',
+              color: 'bg-purple-600 text-white'
+            });
+          }
+        });
+        return merged;
+      }
+    } catch (e) {}
+    return DEFAULT_CATEGORIES;
+  });
+  const [showAddCat, setShowAddCat] = useState<boolean>(false);
+  const [newCatInput, setNewCatInput] = useState<string>('');
+
+  const handleAddCustomTaskCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newCatInput.trim();
+    if (!trimmed) return;
+    if (!categoriesList.some(c => c.id.toLowerCase() === trimmed.toLowerCase())) {
+      const newItem = { id: trimmed, label: trimmed, icon: 'label', color: 'bg-indigo-600 text-white' };
+      const updated = [...categoriesList, newItem];
+      setCategoriesList(updated);
+      try {
+        const catNames = updated.map(c => c.id);
+        localStorage.setItem('custom_meta_categories', JSON.stringify(catNames));
+      } catch (e) {}
+    }
+    setCategory(trimmed as any);
+    setNewCatInput('');
+    setShowAddCat(false);
+  };
+
+  const handleDeleteTaskCategory = (catId: string) => {
+    if (categoriesList.length <= 1) return;
+    const updated = categoriesList.filter(c => c.id !== catId);
+    setCategoriesList(updated);
+    try {
+      localStorage.setItem('custom_meta_categories', JSON.stringify(updated.map(c => c.id)));
+    } catch (e) {}
+    if (category === catId) setCategory(updated[0].id);
+  };
+
   const [recipient, setRecipient] = useState<string>(''); // default empty, must select
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [category, setCategory] = useState<TaskCategory>('Hogar');
+  const [category, setCategory] = useState<string>('Hogar');
   const [isHighPriority, setIsHighPriority] = useState<boolean>(false);
+  const [isCritical, setIsCritical] = useState<boolean>(false);
+  const [criticalConfig, setCriticalConfig] = useState<ConfigTareaCritica>({
+    dnd_activo: true,
+    silenciar_llamadas: true,
+    bloquear_redes: true,
+    pantalla_encendida: true,
+    auto_cronometro: true
+  });
   const [scheduledTime, setScheduledTime] = useState<string>('');
   const [estimatedTime, setEstimatedTime] = useState<number>(30);
   const [repetition, setRepetition] = useState<string>('once');
@@ -76,7 +138,7 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
 
   const applySuggestedTask = (task: typeof suggestedTasks[0]) => {
     setTitle(task.title);
-    if (task.category && CATEGORIES.some(c => c.id === task.category)) {
+    if (task.category && categoriesList.some(c => c.id === task.category)) {
       setCategory(task.category);
     }
     setEstimatedTime(task.estimatedTime || 20);
@@ -114,7 +176,9 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
         estimatedTime,
         true,
         category,
-        isHighPriority
+        isHighPriority,
+        isCritical,
+        isCritical ? criticalConfig : undefined
       );
       
       setLoading(false);
@@ -123,6 +187,7 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
       setDescription('');
       setRecipient('');
       setIsHighPriority(false);
+      setIsCritical(false);
       
       setTimeout(() => setSuccess(false), 2500);
     }, 1200);
@@ -176,18 +241,28 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
 
         {/* Task Category Selection */}
         <div>
-          <label className="block font-sans text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-            Categoría de Tarea
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block font-sans text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Categoría de Tarea
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowAddCat(true)}
+              className="text-xs font-black text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm font-bold">add</span>
+              + Categoría
+            </button>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-            {CATEGORIES.map((cat) => {
+            {categoriesList.map((cat) => {
               const isSelected = category === cat.id;
               return (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => setCategory(cat.id)}
-                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all text-center ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all text-center cursor-pointer ${
                     isSelected
                       ? 'border-brand-primary bg-indigo-50/70 text-brand-dark ring-2 ring-brand-primary/20 shadow-sm'
                       : 'border-slate-100 bg-slate-50/50 text-gray-600 hover:bg-slate-100'
@@ -342,6 +417,95 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
           </div>
         </div>
 
+        {/* Priority and Critical Task Toggles */}
+        <div className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isHighPriority}
+                onChange={(e) => setIsHighPriority(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 bg-white border-slate-300 focus:ring-amber-500 cursor-pointer"
+              />
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                ⭐ Alta Prioridad
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl">
+              <input
+                type="checkbox"
+                checked={isCritical}
+                onChange={(e) => setIsCritical(e.target.checked)}
+                className="w-4 h-4 rounded text-rose-600 bg-white border-rose-300 focus:ring-rose-500 cursor-pointer"
+              />
+              <span className="text-xs font-black text-rose-900 flex items-center gap-1">
+                🚨 Tarea Crítica / Modo Misión
+              </span>
+            </label>
+          </div>
+
+          {/* Automatic Actions for Critical Tasks */}
+          {isCritical && (
+            <div className="mt-3 pt-3 border-t border-rose-200/60 space-y-2.5 animate-fadeIn">
+              <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block">
+                Acciones Automáticas al Iniciar Misión:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold text-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfig.dnd_activo}
+                    onChange={(e) => setCriticalConfig(prev => ({ ...prev, dnd_activo: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-rose-600 rounded"
+                  />
+                  <span>🌙 Activar Modo No Molestar</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfig.silenciar_llamadas}
+                    onChange={(e) => setCriticalConfig(prev => ({ ...prev, silenciar_llamadas: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-rose-600 rounded"
+                  />
+                  <span>🔕 Silenciar llamadas / notif.</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfig.bloquear_redes}
+                    onChange={(e) => setCriticalConfig(prev => ({ ...prev, bloquear_redes: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-rose-600 rounded"
+                  />
+                  <span>🚫 Bloquear Redes Sociales (IG, TikTok, YT)</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfig.pantalla_encendida}
+                    onChange={(e) => setCriticalConfig(prev => ({ ...prev, pantalla_encendida: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-rose-600 rounded"
+                  />
+                  <span>💡 Mantener pantalla encendida</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-white p-2 rounded-lg border border-slate-200 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfig.auto_cronometro}
+                    onChange={(e) => setCriticalConfig(prev => ({ ...prev, auto_cronometro: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-rose-600 rounded"
+                  />
+                  <span>⏱️ Iniciar cronómetro automáticamente</span>
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Repetition */}
         <div>
           <label className="block font-sans text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Repetición</label>
@@ -400,6 +564,53 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
           </button>
         </div>
       </form>
+
+      {/* ADD CUSTOM TASK CATEGORY MODAL */}
+      {showAddCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowAddCat(false)}></div>
+          <div className="relative bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-indigo-100 animate-fadeIn">
+            <h3 className="font-sans text-lg font-extrabold text-slate-900 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-indigo-600">category</span>
+              Nueva Categoría de Tarea
+            </h3>
+            <p className="font-sans text-xs text-slate-500 mb-4">
+              Crea una categoría personalizada para agrupar y filtrar las tareas.
+            </p>
+
+            <form onSubmit={handleAddCustomTaskCategory} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre de la Categoría</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  placeholder="Ej. Mascotas, Compras, Proyectos..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCat(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-md cursor-pointer"
+                >
+                  Guardar Categoría
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

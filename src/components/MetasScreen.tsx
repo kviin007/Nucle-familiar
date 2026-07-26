@@ -25,9 +25,103 @@ const DAYS_OF_WEEK = [
   { id: 0, label: 'Dom' },
 ];
 
+// Helper to calculate deadline status for a goal
+export interface GoalDeadlineInfo {
+  isNear: boolean;
+  isUnder24h: boolean;
+  isExpired: boolean;
+  label: string;
+  badgeClass: string;
+  cardBorderClass?: string;
+  icon: string;
+  hoursLeft: number;
+}
+
+export function getGoalDeadlineInfo(meta: Meta): GoalDeadlineInfo | null {
+  let deadlineStr = meta.fecha_fin || meta.fecha_limite;
+  if (!deadlineStr && meta.fecha_inicio) {
+    const d = new Date(meta.fecha_inicio);
+    const val = meta.duracion_valor || 1;
+    const unit = meta.duracion_unidad || 'meses';
+    if (unit === 'dias') d.setDate(d.getDate() + val);
+    else if (unit === 'semanas') d.setDate(d.getDate() + val * 7);
+    else d.setMonth(d.getMonth() + val);
+    deadlineStr = d.toISOString().split('T')[0];
+  }
+  if (!deadlineStr) return null;
+
+  const now = new Date();
+  const deadlineDate = deadlineStr.includes('T') ? new Date(deadlineStr) : new Date(`${deadlineStr}T23:59:59`);
+
+  if (isNaN(deadlineDate.getTime())) return null;
+
+  const diffMs = deadlineDate.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (diffHours < 0) {
+    return {
+      isNear: true,
+      isUnder24h: true,
+      isExpired: true,
+      label: 'Plazo Vencido',
+      badgeClass: 'bg-rose-950 text-rose-200 border border-rose-800 font-bold shadow-xs',
+      cardBorderClass: 'border-rose-300 bg-rose-50/10',
+      icon: 'running_with_errors',
+      hoursLeft: 0,
+    };
+  }
+
+  // Less than 24 hours away!
+  if (diffHours <= 24) {
+    const hours = Math.max(1, Math.floor(diffHours));
+    return {
+      isNear: true,
+      isUnder24h: true,
+      isExpired: false,
+      label: `🚨 ¡Límite: <24h! (${hours}h)`,
+      badgeClass: 'bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 text-white border border-rose-300 shadow-md animate-pulse font-black',
+      cardBorderClass: 'border-rose-400 ring-2 ring-rose-500/30 shadow-rose-100',
+      icon: 'alarm',
+      hoursLeft: hours,
+    };
+  }
+
+  // Near deadline: <= 72 hours (3 days)
+  if (diffHours <= 72) {
+    const days = Math.ceil(diffHours / 24);
+    return {
+      isNear: true,
+      isUnder24h: false,
+      isExpired: false,
+      label: `⏰ Vence en ${days} días`,
+      badgeClass: 'bg-amber-500/20 text-amber-900 border border-amber-400/80 font-extrabold',
+      cardBorderClass: 'border-amber-300/80',
+      icon: 'schedule',
+      hoursLeft: Math.floor(diffHours),
+    };
+  }
+
+  // Near deadline: <= 168 hours (7 days)
+  if (diffHours <= 168) {
+    const days = Math.ceil(diffHours / 24);
+    return {
+      isNear: true,
+      isUnder24h: false,
+      isExpired: false,
+      label: `⏳ Quedan ${days} días`,
+      badgeClass: 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold',
+      cardBorderClass: '',
+      icon: 'calendar_month',
+      hoursLeft: Math.floor(diffHours),
+    };
+  }
+
+  return null;
+}
+
 export default function MetasScreen({
-  metas,
-  usuarios,
+  metas = [],
+  usuarios = [],
   currentUser,
   consecuenciasPlantillas = [],
   recompensasPlantillas = [],
@@ -47,10 +141,61 @@ export default function MetasScreen({
   const [showConsModal, setShowConsModal] = useState<boolean>(false);
   const [selectedGoalDetail, setSelectedGoalDetail] = useState<Meta | null>(null);
 
+  // Category List State with Custom Category Creation
+  const [allCategories, setAllCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('custom_meta_categories');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return ['Salud', 'Estudio', 'Finanzas', 'Hogar', 'Personal'];
+  });
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState<boolean>(false);
+  const [newCategoryName, setNewCategoryName] = useState<string>('');
+
   // Goal Form State
   const [tipo, setTipo] = useState<'individual' | 'familiar'>('individual');
   const [titulo, setTitulo] = useState<string>('');
   const [categoria, setCategoria] = useState<Meta['categoria']>('Salud');
+
+  const handleAddCustomCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    if (!allCategories.includes(trimmed)) {
+      const updated = [...allCategories, trimmed];
+      setAllCategories(updated);
+      try {
+        localStorage.setItem('custom_meta_categories', JSON.stringify(updated));
+      } catch (e) {}
+    }
+    setCategoria(trimmed as any);
+    setCategoryFilter(trimmed);
+    setNewCategoryName('');
+    setShowAddCategoryModal(false);
+  };
+
+  const handleEditCategory = (oldCat: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldCat) return;
+    const updated = allCategories.map(c => c === oldCat ? trimmed : c);
+    setAllCategories(updated);
+    try {
+      localStorage.setItem('custom_meta_categories', JSON.stringify(updated));
+    } catch (e) {}
+    if (categoria === oldCat) setCategoria(trimmed as any);
+    if (categoryFilter === oldCat) setCategoryFilter(trimmed);
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    if (allCategories.length <= 1) return;
+    const updated = allCategories.filter(c => c !== catToDelete);
+    setAllCategories(updated);
+    try {
+      localStorage.setItem('custom_meta_categories', JSON.stringify(updated));
+    } catch (e) {}
+    if (categoria === catToDelete) setCategoria(updated[0] as any);
+    if (categoryFilter === catToDelete) setCategoryFilter('Todos');
+  };
   const [frecuenciaObjetivo, setFrecuenciaObjetivo] = useState<number>(5);
   const [unidadFrecuencia, setUnidadFrecuencia] = useState<'dia' | 'semana' | 'mes'>('semana');
   const [duracionValor, setDuracionValor] = useState<number>(1);
@@ -107,7 +252,7 @@ export default function MetasScreen({
 
   const computedFechaFin = calculateEndDate(fechaInicio, duracionValor, duracionUnidad);
 
-  const categories: string[] = ['Todos', 'Salud', 'Estudio', 'Finanzas', 'Hogar', 'Personal'];
+  const categories: string[] = ['Todos', ...allCategories];
 
   // Filter metas by Tab and Category
   const currentFamilyId = currentUser?.familia_id || "fam_kevin_admin";
@@ -440,12 +585,12 @@ export default function MetasScreen({
       </div>
 
       {/* Category Filter Chips */}
-      <div className="flex overflow-x-auto pb-1 gap-2 no-scrollbar">
+      <div className="flex items-center overflow-x-auto pb-1 gap-2 no-scrollbar">
         {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setCategoryFilter(cat)}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-full font-sans text-xs font-semibold border transition-all ${
+            className={`whitespace-nowrap px-4 py-1.5 rounded-full font-sans text-xs font-semibold border transition-all cursor-pointer ${
               categoryFilter === cat
                 ? 'bg-brand-light text-brand-dark border-brand-primary shadow-xs font-bold'
                 : 'bg-white text-gray-500 border-slate-200 hover:text-gray-900'
@@ -454,20 +599,70 @@ export default function MetasScreen({
             {cat}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setShowAddCategoryModal(true)}
+          className="whitespace-nowrap px-3 py-1.5 rounded-full font-sans text-xs font-black bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 flex items-center gap-1 transition-all cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-sm font-bold">add</span>
+          + Categoría
+        </button>
       </div>
 
       {/* Metas Grid */}
+      {(() => {
+        const criticalMetas = (metas || []).filter(m => {
+          const info = getGoalDeadlineInfo(m);
+          return info && info.isUnder24h && !info.isExpired;
+        });
+
+        return criticalMetas.length > 0 ? (
+          <div className="bg-gradient-to-r from-rose-500/10 via-amber-500/10 to-rose-500/10 border border-rose-300 p-4 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5 text-rose-900 font-extrabold text-xs">
+              <span className="material-symbols-outlined text-rose-600 text-lg animate-bounce">alarm</span>
+              <span>
+                ¡Atención! Tienes <strong className="text-rose-700 underline font-black">{criticalMetas.length} meta(s)</strong> con fecha límite a menos de 24 horas.
+              </span>
+            </div>
+            <span className="bg-rose-600 text-white font-black text-[10px] uppercase px-2.5 py-1 rounded-full animate-pulse shrink-0">
+              Urgente &lt; 24 Horas
+            </span>
+          </div>
+        ) : null;
+      })()}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredMetas.map((meta) => {
           const owner = usuarios.find(u => u.uid === meta.usuario_id);
           const isFamiliar = meta.tipo === 'familiar';
+          const deadlineInfo = getGoalDeadlineInfo(meta);
 
           return (
             <div
               key={meta.meta_id}
               onClick={() => setSelectedGoalDetail(meta)}
-              className="bg-white rounded-3xl p-5 border border-indigo-50/80 shadow-xl shadow-indigo-100/20 flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 min-h-[200px] cursor-pointer relative group"
+              className={`bg-white rounded-3xl p-5 border shadow-xl flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 min-h-[200px] cursor-pointer relative group ${
+                deadlineInfo?.cardBorderClass 
+                  ? deadlineInfo.cardBorderClass 
+                  : 'border-indigo-50/80 shadow-indigo-100/20'
+              }`}
             >
+              {/* Top Badge for Deadline Alert (if critical or near) */}
+              {deadlineInfo && (
+                <div className="mb-2 flex items-center justify-between gap-1">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] ${deadlineInfo.badgeClass}`}>
+                    <span className="material-symbols-outlined text-xs">{deadlineInfo.icon}</span>
+                    <span>{deadlineInfo.label}</span>
+                  </span>
+
+                  {deadlineInfo.isUnder24h && !deadlineInfo.isExpired && (
+                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 uppercase tracking-wider">
+                      Próximo a vencer
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Badge for Type */}
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-3">
@@ -646,17 +841,24 @@ export default function MetasScreen({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Categoría</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Categoría</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCategoryModal(true)}
+                      className="text-[10px] font-black text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      + Nueva
+                    </button>
+                  </div>
                   <select
                     value={categoria}
                     onChange={(e) => setCategoria(e.target.value as Meta['categoria'])}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
                   >
-                    <option value="Salud">Salud</option>
-                    <option value="Estudio">Estudio</option>
-                    <option value="Finanzas">Finanzas</option>
-                    <option value="Hogar">Hogar</option>
-                    <option value="Personal">Personal</option>
+                    {allCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -1003,33 +1205,53 @@ export default function MetasScreen({
       )}
 
       {/* DETAIL GOAL MODAL */}
-      {selectedGoalDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/30 backdrop-blur-xs" onClick={() => setSelectedGoalDetail(null)}></div>
-          <div className="relative bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-indigo-50 animate-scale-up space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="inline-block px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider mb-1">
-                  Meta {selectedGoalDetail.tipo === 'familiar' ? 'Familiar' : 'Individual'}
-                </span>
-                <h3 className="font-sans text-lg font-bold text-gray-900">{selectedGoalDetail.titulo}</h3>
+      {selectedGoalDetail && (() => {
+        const detailDeadlineInfo = getGoalDeadlineInfo(selectedGoalDetail);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-gray-900/30 backdrop-blur-xs" onClick={() => setSelectedGoalDetail(null)}></div>
+            <div className="relative bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-indigo-50 animate-scale-up space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider">
+                      Meta {selectedGoalDetail.tipo === 'familiar' ? 'Familiar' : 'Individual'}
+                    </span>
+                    {detailDeadlineInfo && (
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] ${detailDeadlineInfo.badgeClass}`}>
+                        <span className="material-symbols-outlined text-[12px]">{detailDeadlineInfo.icon}</span>
+                        <span>{detailDeadlineInfo.label}</span>
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-sans text-lg font-bold text-gray-900">{selectedGoalDetail.titulo}</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedGoalDetail(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-gray-500 cursor-pointer hover:bg-slate-200"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
               </div>
-              <button
-                onClick={() => setSelectedGoalDetail(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-gray-500"
-              >
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
-            </div>
 
-            <div className="bg-slate-50 p-4 rounded-2xl space-y-2 text-xs text-gray-700">
-              <p><strong>Categoría:</strong> {selectedGoalDetail.categoria}</p>
-              <p><strong>Frecuencia:</strong> {selectedGoalDetail.frecuencia_objetivo} veces por {selectedGoalDetail.unidad_frecuencia}</p>
-              <p><strong>Duración:</strong> {selectedGoalDetail.duracion_valor} {selectedGoalDetail.duracion_unidad}</p>
-              <p><strong>Periodo:</strong> {selectedGoalDetail.fecha_inicio} a {selectedGoalDetail.fecha_fin}</p>
-              <p><strong>Generación Automática Tareas:</strong> {selectedGoalDetail.generar_tareas_automaticas ? 'Sí' : 'No'}</p>
-              <p><strong>Consecuencias Activas:</strong> {selectedGoalDetail.consecuencias_activas ? 'Sí' : 'No'}</p>
-            </div>
+              {detailDeadlineInfo && detailDeadlineInfo.isUnder24h && !detailDeadlineInfo.isExpired && (
+                <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl flex items-center gap-2.5 text-xs text-rose-900 font-medium">
+                  <span className="material-symbols-outlined text-rose-600 text-lg animate-pulse">alarm</span>
+                  <div>
+                    <strong className="block font-black text-rose-700 uppercase text-[10px] tracking-wider">¡Alerta de Fecha Límite Crítica!</strong>
+                    <span>Esta meta vence en menos de 24 horas. ¡Completa las tareas para asegurar el cumplimiento!</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-slate-50 p-4 rounded-2xl space-y-2 text-xs text-gray-700">
+                <p><strong>Categoría:</strong> {selectedGoalDetail.categoria}</p>
+                <p><strong>Frecuencia:</strong> {selectedGoalDetail.frecuencia_objetivo} veces por {selectedGoalDetail.unidad_frecuencia}</p>
+                <p><strong>Duración:</strong> {selectedGoalDetail.duracion_valor} {selectedGoalDetail.duracion_unidad}</p>
+                <p><strong>Periodo:</strong> {selectedGoalDetail.fecha_inicio} a {selectedGoalDetail.fecha_fin || selectedGoalDetail.fecha_limite}</p>
+                <p><strong>Generación Automática Tareas:</strong> {selectedGoalDetail.generar_tareas_automaticas ? 'Sí' : 'No'}</p>
+                <p><strong>Consecuencias Activas:</strong> {selectedGoalDetail.consecuencias_activas ? 'Sí' : 'No'}</p>
+              </div>
 
             {selectedGoalDetail.tipo === 'familiar' && selectedGoalDetail.progreso_por_miembro && selectedGoalDetail.progreso_por_miembro.length > 0 && (
               <div className="space-y-2">
@@ -1062,7 +1284,8 @@ export default function MetasScreen({
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* CREATE REWARD TEMPLATE MODAL */}
       {showRewModal && (
@@ -1164,6 +1387,53 @@ export default function MetasScreen({
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
                 >
                   Guardar Recompensa
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CUSTOM CATEGORY MODAL */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowAddCategoryModal(false)}></div>
+          <div className="relative bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-indigo-100 animate-fadeIn">
+            <h3 className="font-sans text-lg font-extrabold text-slate-900 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-indigo-600">category</span>
+              Agregar Nueva Categoría
+            </h3>
+            <p className="font-sans text-xs text-slate-500 mb-4">
+              Crea una categoría personalizada para clasificar tus metas y tareas.
+            </p>
+
+            <form onSubmit={handleAddCustomCategory} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre de la Categoría</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="Ej. Deportes, Arte, Proyectos..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-md cursor-pointer"
+                >
+                  Guardar Categoría
                 </button>
               </div>
             </form>

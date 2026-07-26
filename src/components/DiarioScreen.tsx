@@ -9,7 +9,7 @@ interface DiarioScreenProps {
   onAddReaction?: (entrada_id: string, emoji: string) => void;
 }
 
-export default function DiarioScreen({ diario, usuarios, currentUser, onAddEntry, onAddReaction }: DiarioScreenProps) {
+export default function DiarioScreen({ diario = [], usuarios = [], currentUser, onAddEntry, onAddReaction }: DiarioScreenProps) {
   const [mood, setMood] = useState<DiarioEntrada['emocion']>('Great');
   const [text, setText] = useState<string>('');
   const [visible, setVisible] = useState<boolean>(true);
@@ -519,7 +519,7 @@ export default function DiarioScreen({ diario, usuarios, currentUser, onAddEntry
           </div>
         </div>
 
-        {/* Right Sidebar Decor & Recent Memories */}
+        {/* Right Sidebar Decor */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-gradient-to-br from-amber-50 to-indigo-50 border border-indigo-100/60 rounded-3xl p-5 shadow-sm relative overflow-hidden">
             <span className="font-serif absolute -top-3 -left-3 text-7xl text-brand-dark/5 select-none font-bold">“</span>
@@ -527,36 +527,6 @@ export default function DiarioScreen({ diario, usuarios, currentUser, onAddEntry
               "Expresar nuestras emociones en familia fortalece los lazos de empatía y comprensión mutua."
             </p>
             <p className="font-sans text-[10px] text-brand-primary font-extrabold text-right mt-3">- Consejería Núcleo Familiar</p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-5 border border-indigo-50/60 shadow-xl shadow-indigo-100/20 space-y-4">
-            <h3 className="font-sans text-sm font-bold text-gray-700 flex items-center gap-2">
-              <span className="material-symbols-outlined text-amber-500">photo_library</span>
-              Galería de Recuerdos
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {displayDiario.map((entry) => (
-                <div key={entry.entrada_id} className="aspect-square rounded-2xl bg-gray-50 border border-slate-150 relative overflow-hidden group shadow-inner">
-                  <div className="absolute inset-0 bg-cover bg-center p-3 flex flex-col justify-end bg-gradient-to-t from-gray-900/90 via-gray-900/40 to-transparent">
-                    <span className="text-[18px] absolute top-2 right-2">
-                      {entry.emocion === 'Great' ? '😁' : entry.emocion === 'Good' ? '🙂' : entry.emocion === 'Okay' ? '😐' : entry.emocion === 'Angry' ? '😠' : '😢'}
-                    </span>
-                    <p className="font-sans text-[10px] text-white line-clamp-2 font-medium leading-relaxed">{entry.texto}</p>
-                    <p className="font-sans text-[8px] text-gray-300 mt-1 font-mono">{entry.fecha}</p>
-                  </div>
-                </div>
-              ))}
-              {/* Fallback image memory */}
-              <div className="aspect-square rounded-2xl bg-gray-100 overflow-hidden relative group border border-slate-150">
-                <img
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                  src="https://images.unsplash.com/photo-1511895426328-dc8714191300?w=300&h=300&fit=crop"
-                  alt="Familia junta"
-                />
-                <span className="absolute bottom-1.5 left-2 bg-black/60 backdrop-blur-xs px-1.5 py-0.5 rounded text-[8px] font-bold text-white">Momento Especial</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

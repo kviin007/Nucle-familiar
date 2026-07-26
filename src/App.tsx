@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario } from './types';
+import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario, ConfigTareaCritica } from './types';
 import OnboardingScreen, { OnboardingData } from './components/OnboardingScreen';
 import HoyScreen from './components/HoyScreen';
 import MetasScreen from './components/MetasScreen';
 import FamiliaScreen from './components/FamiliaScreen';
 import DiarioScreen from './components/DiarioScreen';
 import IdeasScreen from './components/IdeasScreen';
+import WidgetsScreen from './components/WidgetsScreen';
 import JuegosScreen from './components/JuegosScreen';
 import AdminPanelDashboard from './components/AdminPanelDashboard';
 import FamilyNetworkScreen from './components/FamilyNetworkScreen';
 import AssignTaskScreen from './components/AssignTaskScreen';
 import UserDetailScreen from './components/UserDetailScreen';
 import CodeExporterScreen from './components/CodeExporterScreen';
+import PerfilScreen from './components/PerfilScreen';
 import FocusModeOverlay from './components/FocusModeOverlay';
+import LiveActivityBanner from './components/LiveActivityBanner';
 import GeminiAdvisorModal from './components/GeminiAdvisorModal';
 
 // Import Firebase Authentication and Firestore if available
@@ -400,6 +403,21 @@ export default function App() {
     setFocusedTask(null);
   };
 
+  const handleSnoozeTask = async (taskId: string, minutesToSnooze?: number, exactTime?: string) => {
+    try {
+      const res = await fetch('/api/tasks/snooze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tarea_id: taskId, minutesToSnooze, exactTime }),
+      });
+      if (res.ok) {
+        await fetchState();
+      }
+    } catch (e) {
+      console.error("Error snoozing task", e);
+    }
+  };
+
   const handleAddTask = async (
     titulo: string,
     userId: string,
@@ -407,7 +425,9 @@ export default function App() {
     estimatedTime: number,
     visible: boolean,
     categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros',
-    esPrioridadAlta?: boolean
+    esPrioridadAlta?: boolean,
+    esCritica?: boolean,
+    configCritica?: ConfigTareaCritica
   ) => {
     try {
       const res = await fetch('/api/tasks/create', {
@@ -420,7 +440,9 @@ export default function App() {
           tiempo_estimado_min: estimatedTime,
           visible_familia: visible,
           categoria: categoria || 'Otros',
-          es_prioridad_alta: !!esPrioridadAlta
+          es_prioridad_alta: !!esPrioridadAlta,
+          es_critica: !!esCritica,
+          config_critica: configCritica
         }),
       });
       if (res.ok) {
@@ -601,12 +623,16 @@ export default function App() {
     }
   };
 
-  const handleUpdateUser = async (uid: string, nombre: string, avatar_url: string) => {
+  const handleUpdateUser = async (dataOrUid: string | Partial<Usuario>, nombre?: string, avatar_url?: string) => {
     try {
+      let targetUid = typeof dataOrUid === 'string' ? dataOrUid : (currentUser?.uid || '');
+      let targetNombre = typeof dataOrUid === 'string' ? nombre : dataOrUid.nombre;
+      let targetAvatar = typeof dataOrUid === 'string' ? avatar_url : dataOrUid.avatar_url;
+
       const res = await fetch('/api/user/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, nombre, avatar_url }),
+        body: JSON.stringify({ uid: targetUid, nombre: targetNombre, avatar_url: targetAvatar }),
       });
       if (res.ok) {
         await fetchState();
@@ -1106,10 +1132,11 @@ export default function App() {
           {[
             { id: 'hoy', label: 'Hoy', icon: 'home' },
             { id: 'metas', label: 'Metas', icon: 'target' },
-            { id: 'familia', label: 'Familia', icon: 'group' },
             { id: 'diario', label: 'Diario', icon: 'menu_book' },
-            { id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' },
+            { id: 'familia', label: 'Familia', icon: 'group' },
             { id: 'juegos', label: 'Juegos', icon: 'sports_esports' },
+            { id: 'perfil', label: 'Perfil & Avatar', icon: 'account_circle' },
+            ...(isAdmin ? [{ id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' }] : [])
           ].map((item) => (
             <button
               key={item.id}
@@ -1151,30 +1178,19 @@ export default function App() {
             </>
           )}
 
-          <div className="h-px bg-slate-100 my-4" />
-
-          {/* Gemini AI Assistant Button */}
-          <button
-            onClick={() => setIsGeminiAdvisorOpen(true)}
-            className="flex items-center gap-3 px-4 py-3 rounded-2xl font-sans text-xs font-bold transition-all text-left cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md hover:shadow-lg hover:opacity-95"
-          >
-            <span className="material-symbols-outlined text-lg text-amber-300">auto_awesome</span>
-            <span>Asistente Gemini IA</span>
-          </button>
-
-          {/* Dev Code Exporter */}
-          <button
-            key="code-exporter"
-            onClick={() => setView('code-exporter')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-sans text-xs font-bold transition-all text-left cursor-pointer ${
-              view === 'code-exporter'
-                ? 'bg-slate-100 text-slate-800 shadow-sm font-extrabold'
-                : 'text-gray-500 hover:bg-slate-50'
-            }`}
-          >
-            <span className="material-symbols-outlined text-lg">code</span>
-            <span>Código de Desarrollador</span>
-          </button>
+          {/* Gemini AI Assistant Button (Only visible to Admin) */}
+          {isAdmin && (
+            <>
+              <div className="h-px bg-slate-100 my-3" />
+              <button
+                onClick={() => setIsGeminiAdvisorOpen(true)}
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl font-sans text-xs font-bold transition-all text-left cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md hover:shadow-lg hover:opacity-95"
+              >
+                <span className="material-symbols-outlined text-lg text-amber-300">auto_awesome</span>
+                <span>Asistente Gemini IA</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Footer actions */}
@@ -1323,18 +1339,45 @@ export default function App() {
               />
             )}
             {view === 'ideas' && (
-              <IdeasScreen
+              isAdmin ? (
+                <IdeasScreen
+                  currentUser={currentUser}
+                  onAddTask={(taskData: any) => handleAddTask(
+                    taskData.titulo,
+                    taskData.usuario_id,
+                    taskData.hora_programada,
+                    taskData.tiempo_estimado_min,
+                    taskData.visible_familia,
+                    taskData.categoria,
+                    taskData.es_prioridad_alta
+                  )}
+                  onAddGoal={(goalData: any) => handleAddGoal(goalData)}
+                  showToast={showToast}
+                />
+              ) : (
+                <HoyScreen
+                  usuarios={usuarios}
+                  tareas={tareas}
+                  metas={metas}
+                  diario={diario}
+                  currentUser={currentUser}
+                  onToggleTask={handleTaskClick}
+                  onAddTaskClick={() => setView('admin-assign-task')}
+                  onGoToMetas={() => setView('metas')}
+                  onGoToDiario={() => setView('diario')}
+                />
+              )
+            )}
+            {(view === 'perfil' || view === 'widgets') && (
+              <PerfilScreen
                 currentUser={currentUser}
-                onAddTask={(taskData: any) => handleAddTask(
-                  taskData.titulo,
-                  taskData.usuario_id,
-                  taskData.hora_programada,
-                  taskData.tiempo_estimado_min,
-                  taskData.visible_familia,
-                  taskData.categoria,
-                  taskData.es_prioridad_alta
-                )}
-                onAddGoal={(goalData: any) => handleAddGoal(goalData)}
+                usuarios={usuarios}
+                tareas={tareas}
+                familias={familias}
+                isAdmin={isAdmin}
+                onUpdateUser={handleUpdateUser}
+                onToggleTask={handleToggleTask}
+                onSnoozeTask={handleSnoozeTask}
                 showToast={showToast}
               />
             )}
@@ -1383,10 +1426,40 @@ export default function App() {
                 onStateUpdate={fetchState}
               />
             )}
-            {view === 'code-exporter' && <CodeExporterScreen />}
+            {view === 'code-exporter' && (
+              isAdmin ? (
+                <CodeExporterScreen />
+              ) : (
+                <PerfilScreen
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  tareas={tareas}
+                  familias={familias}
+                  isAdmin={isAdmin}
+                  onUpdateUser={handleUpdateUser}
+                  onToggleTask={handleToggleTask}
+                  onSnoozeTask={handleSnoozeTask}
+                  showToast={showToast}
+                />
+              )
+            )}
           </div>
         )}
       </main>
+
+      {/* Live Activity Floating Banner (when a task is in progress and overlay is not full-screen) */}
+      {!focusedTask && (() => {
+        const inProgressTask = tareas.find(t => t.estado === 'en_progreso');
+        if (!inProgressTask) return null;
+        return (
+          <LiveActivityBanner
+            task={inProgressTask}
+            onComplete={handleCompleteFocusTask}
+            onPause={(taskId) => handleToggleTask(taskId)}
+            onOpenFocusMode={(task) => setFocusedTask(task)}
+          />
+        );
+      })()}
 
       {/* Focus Mode Overlay when active */}
       {focusedTask && (
@@ -1398,25 +1471,27 @@ export default function App() {
       )}
 
       {/* Mobile Bottom Navigation (Visible only on mobile screen widths) */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-indigo-50 py-2.5 px-2 flex justify-around items-center z-40 shadow-md">
+      <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-indigo-100 py-2 px-2 flex justify-around items-center z-40 shadow-lg overflow-x-auto no-scrollbar">
         {[
           { id: 'hoy', label: 'Hoy', icon: 'home' },
           { id: 'metas', label: 'Metas', icon: 'target' },
           { id: 'diario', label: 'Diario', icon: 'menu_book' },
-          { id: 'ideas', label: 'Ideas', icon: 'lightbulb' },
+          { id: 'juegos', label: 'Juegos', icon: 'sports_esports' },
+          { id: 'perfil', label: 'Perfil', icon: 'account_circle' },
           { id: 'familia', label: 'Familia', icon: 'group' },
+          ...(isAdmin ? [{ id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' }] : [])
         ].map((item) => (
           <button
             key={item.id}
             onClick={() => setView(item.id as ViewType)}
-            className={`flex flex-col items-center justify-center w-14 transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center min-w-[56px] px-1 py-1 transition-all cursor-pointer ${
               view === item.id
-                ? 'text-brand-primary font-bold scale-105'
-                : 'text-gray-400 hover:text-brand-primary/85'
+                ? 'text-brand-primary font-black scale-105'
+                : 'text-slate-400 hover:text-brand-primary'
             }`}
           >
             <span className="material-symbols-outlined text-xl">{item.icon}</span>
-            <span className="font-sans text-[9px] uppercase tracking-wider mt-1">{item.label}</span>
+            <span className="font-sans text-[9px] uppercase tracking-wider mt-0.5 whitespace-nowrap">{item.label}</span>
           </button>
         ))}
 

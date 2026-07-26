@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TareaDiaria, Usuario, Meta, DiarioEntrada } from '../types';
+import { getCountdownInfo } from '../utils/countdown';
+import { calculateStreakAndMetrics } from '../utils/streaks';
 
 interface HoyScreenProps {
   usuarios: Usuario[];
@@ -102,7 +104,7 @@ const CATEGORY_CONFIG: {
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-export default function HoyScreen({ usuarios, tareas, metas, diario = [], currentUser, onToggleTask, onAddTaskClick, onGoToMetas, onGoToDiario }: HoyScreenProps) {
+export default function HoyScreen({ usuarios = [], tareas = [], metas = [], diario = [], currentUser, onToggleTask, onAddTaskClick, onGoToMetas, onGoToDiario }: HoyScreenProps) {
   const [activeView, setActiveView] = useState<'lista' | 'calendario'>('lista');
   const [selectedCategory, setSelectedCategory] = useState<TaskCategoryFilter>('Todas');
   const [taskScope, setTaskScope] = useState<TaskScopeFilter>('mis_tareas');
@@ -110,6 +112,16 @@ export default function HoyScreen({ usuarios, tareas, metas, diario = [], curren
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string>('todos');
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [showDigestModal, setShowDigestModal] = useState<boolean>(false);
+
+  // Live timer tick to update countdowns automatically every 30 seconds
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Compute Streak and Daily/Weekly/Monthly metrics
+  const streakMetrics = calculateStreakAndMetrics(tareas, currentUser?.uid);
 
   // Trigger Daily Digest on first load of Hoy screen
   useEffect(() => {
@@ -472,6 +484,60 @@ export default function HoyScreen({ usuarios, tareas, metas, diario = [], curren
             "El amor de la familia es el mayor regalo de la vida y el mejor legado que podemos construir juntos."
           </p>
           <p className="font-sans text-[9px] text-brand-primary uppercase tracking-widest font-extrabold">PENSAMIENTO DEL DÍA</p>
+        </div>
+      </section>
+
+      {/* SECCIÓN DE PROGRESO DIARIO Y RACHAS (STREAKS & PROGRESS) */}
+      <section className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-[28px] p-5 md:p-6 text-white shadow-xl relative overflow-hidden space-y-4">
+        <div className="absolute right-0 top-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-lg">
+              <span className="material-symbols-outlined text-2xl animate-bounce">local_fire_department</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold uppercase tracking-widest text-amber-400">
+                  Racha Activa
+                </span>
+                <span className="bg-amber-500/20 text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-500/30">
+                  🔥 {streakMetrics.currentStreakDays} {streakMetrics.currentStreakDays === 1 ? 'día' : 'días'} seguidos
+                </span>
+              </div>
+              <h3 className="font-sans text-base md:text-lg font-black text-white">
+                Progreso Diario & Cumplimiento
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-bold text-indigo-200 shrink-0">
+            <div className="text-right">
+              <span className="text-[10px] text-indigo-300/80 uppercase block">Rendimiento Semanal</span>
+              <span className="text-sm font-black text-emerald-400">{streakMetrics.weeklyCompliancePercentage}%</span>
+            </div>
+            <div className="w-px h-8 bg-indigo-800/80" />
+            <div className="text-right">
+              <span className="text-[10px] text-indigo-300/80 uppercase block">Rendimiento Mensual</span>
+              <span className="text-sm font-black text-blue-400">{streakMetrics.monthlyCompliancePercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* General Progress Bar */}
+        <div className="space-y-1.5 relative z-10">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-indigo-200">
+              {streakMetrics.completedTodayCount} de {streakMetrics.totalTodayCount} tareas completadas hoy
+            </span>
+            <span className="text-amber-400 font-extrabold">{streakMetrics.todayPercentage}%</span>
+          </div>
+          <div className="w-full bg-slate-800/90 h-3 rounded-full overflow-hidden p-0.5 border border-indigo-900/60">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-400 transition-all duration-700 shadow-sm"
+              style={{ width: `${streakMetrics.todayPercentage}%` }}
+            />
+          </div>
         </div>
       </section>
 
@@ -929,6 +995,7 @@ export default function HoyScreen({ usuarios, tareas, metas, diario = [], curren
                 const owner = usuarios.find(u => u.uid === task.usuario_id);
                 const taskCat = (task.categoria || 'Otros') as TaskCategoryFilter;
                 const catCfg = CATEGORY_CONFIG[taskCat] || CATEGORY_CONFIG.Otros;
+                const countdown = !isCompleted ? getCountdownInfo(task.hora_programada) : null;
 
                 return (
                   <div
@@ -981,7 +1048,19 @@ export default function HoyScreen({ usuarios, tareas, metas, diario = [], curren
                         </div>
 
                         {/* Status Badges */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex flex-wrap items-center gap-1 flex-shrink-0 justify-end">
+                          {task.es_critica && (
+                            <span className="bg-rose-600 text-white px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm animate-pulse flex items-center gap-1 border border-rose-400">
+                              <span className="material-symbols-outlined text-[12px]">warning</span>
+                              <span>Tarea Crítica</span>
+                            </span>
+                          )}
+                          {countdown && (
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 border transition-all ${countdown.badgeClass}`}>
+                              <span className="material-symbols-outlined text-[12px]">{countdown.icon}</span>
+                              <span>{countdown.label}</span>
+                            </span>
+                          )}
                           {task.es_prioridad_alta && (
                             <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider">
                               Prioritaria
@@ -1000,37 +1079,58 @@ export default function HoyScreen({ usuarios, tareas, metas, diario = [], curren
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 mt-2 items-center">
-                        {/* Member avatar if family view */}
-                        {owner && task.usuario_id !== currentUser?.uid && (
-                          <span className="inline-flex items-center gap-1 bg-slate-100 text-gray-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                            <img src={owner.avatar_url} alt={owner.nombre} className="w-3.5 h-3.5 rounded-full object-cover" />
-                            {owner.nombre}
+                      <div className="flex flex-wrap gap-2 mt-2 items-center justify-between">
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {/* Member avatar if family view */}
+                          {owner && task.usuario_id !== currentUser?.uid && (
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-gray-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              <img src={owner.avatar_url} alt={owner.nombre} className="w-3.5 h-3.5 rounded-full object-cover" />
+                              {owner.nombre}
+                            </span>
+                          )}
+
+                          <span className="bg-slate-100 text-gray-500 px-2.5 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">schedule</span>
+                            {task.hora_programada}
                           </span>
+
+                          <span className="bg-slate-100 text-gray-500 px-2.5 py-0.5 rounded-full text-[10px] font-medium">
+                            {task.tiempo_estimado_min} min
+                          </span>
+
+                          {/* Category Badge */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCategory(taskCat);
+                            }}
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer ${catCfg.lightBg}`}
+                            title={`Filtrar solo por ${taskCat}`}
+                          >
+                            <span className="material-symbols-outlined text-xs">{catCfg.icon}</span>
+                            {taskCat}
+                          </button>
+                        </div>
+
+                        {/* Direct Launch Mission / Focus Mode Button */}
+                        {!isCompleted && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleTask(task.tarea_id);
+                            }}
+                            className={`px-3 py-1 rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                              task.es_critica
+                                ? 'bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white'
+                                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">rocket_launch</span>
+                            <span>{task.es_critica ? 'Iniciar Misión' : 'Modo Foco'}</span>
+                          </button>
                         )}
-
-                        <span className="bg-slate-100 text-gray-500 px-2.5 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs">schedule</span>
-                          {task.hora_programada}
-                        </span>
-
-                        <span className="bg-slate-100 text-gray-500 px-2.5 py-0.5 rounded-full text-[10px] font-medium">
-                          {task.tiempo_estimado_min} min
-                        </span>
-
-                        {/* Category Badge */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCategory(taskCat);
-                          }}
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer ${catCfg.lightBg}`}
-                          title={`Filtrar solo por ${taskCat}`}
-                        >
-                          <span className="material-symbols-outlined text-xs">{catCfg.icon}</span>
-                          {taskCat}
-                        </button>
                       </div>
                     </div>
                   </div>

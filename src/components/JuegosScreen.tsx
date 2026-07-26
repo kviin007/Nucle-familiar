@@ -11,7 +11,8 @@ import {
   Play, 
   RotateCcw,
   Clock,
-  Users
+  Users,
+  X
 } from 'lucide-react';
 import { Usuario, DesbloqueoUsuario } from '../types';
 import { triviaQuestions } from '../data/triviaQuestions';
@@ -27,6 +28,7 @@ import BingoVsAiGame from './games/BingoVsAiGame';
 import BattleshipGame from './games/BattleshipGame';
 import BattleshipVsAiGame from './games/BattleshipVsAiGame';
 import TriviaCoopGame from './games/TriviaCoopGame';
+import InGameChat from './games/InGameChat';
 
 interface JuegosScreenProps {
   currentUser: Usuario | null;
@@ -49,7 +51,7 @@ type GameType =
   | 'battleship_ai' 
   | null;
 
-export default function JuegosScreen({ currentUser, usuarios, desbloqueosUsuarios = [], onStateUpdate }: JuegosScreenProps) {
+export default function JuegosScreen({ currentUser, usuarios = [], desbloqueosUsuarios = [], onStateUpdate }: JuegosScreenProps) {
   const [activeGame, setActiveGame] = useState<GameType>(null);
   const [activeLobbyGame, setActiveLobbyGame] = useState<'chess' | 'guesswho' | 'bingo' | 'battleship' | 'trivia' | null>(null);
   const [modeFilter, setModeFilter] = useState<'all' | 'individual' | 'family'>('all');
@@ -367,184 +369,200 @@ export default function JuegosScreen({ currentUser, usuarios, desbloqueosUsuario
     setActiveLobbyGame(null);
   };
 
+  const getActiveGameTitle = () => {
+    if (activeGame === 'chess') return '♟️ Ajedrez Familiar';
+    if (activeGame === 'chess_ai') return '♟️ Ajedrez vs La Máquina';
+    if (activeGame === 'guesswho') return '🎭 Adivina Quién';
+    if (activeGame === 'guesswho_ai') return '🎭 Adivina Quién vs IA';
+    if (activeGame === 'bingo') return '🎱 Bingo Familiar';
+    if (activeGame === 'bingo_ai') return '🎱 Bingo vs IA';
+    if (activeGame === 'battleship') return '🚢 Batalla Naval';
+    if (activeGame === 'battleship_ai') return '🚢 Batalla Naval vs IA';
+    if (activeGame === 'trivia') return '🧠 Trivia Familiar';
+    if (activeGame === 'pasos') return '👣 Reto de Pasos';
+    if (activeGame === 'memoria') return '🧠 Memoria del Núcleo';
+    return '🎮 Juego Familiar';
+  };
+
+  const getOpponentName = () => {
+    if (activeGame?.endsWith('_ai')) return 'Rival IA 🤖';
+    if (selectedPartidaData?.jugadores) {
+      const oppUid = selectedPartidaData.jugadores.find((u: string) => u !== currentUser?.uid);
+      const opp = usuarios.find(u => u.uid === oppUid);
+      if (opp) return opp.nombre;
+    }
+    return 'Familia / Rival';
+  };
+
   if (!currentUser) return null;
 
   return (
     <div className="space-y-6 font-sans">
       
-      {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          {(activeGame || activeLobbyGame || selectedPartidaId) && (
-            <button 
-              onClick={handleExitMatch}
-              className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-100 text-slate-600 hover:text-slate-900 transition-all font-bold text-xs shadow-sm mb-2 cursor-pointer"
-            >
-              <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
-              Volver al Hub de Juegos
-            </button>
-          )}
-          <h2 className="font-sans text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight mb-1">
-            {activeGame === 'trivia' ? 'Trivia Familiar' 
-             : activeGame === 'pasos' ? 'Reto de Pasos Colectivo' 
-             : activeGame === 'memoria' ? 'Memoria del Núcleo' 
-             : activeGame === 'chess' ? 'Ajedrez Familiar'
-             : activeGame === 'chess_ai' ? 'Ajedrez vs La Máquina'
-             : activeGame === 'guesswho' ? 'Adivina Quién'
-             : activeGame === 'bingo' ? 'Bingo Familiar'
-             : activeGame === 'battleship' ? 'Batalla Naval'
-             : '¡Juegos Familiares y vs La Máquina!'}
-          </h2>
-          <p className="font-sans text-sm text-gray-500 font-medium">
-            Estilo Plato App: Desafíos individuales y partidas multijugador sincronizadas en vivo.
-          </p>
-        </div>
+      {/* FULL-SCREEN 3D IMMERSIVE GAME OVERLAY (ISOLATED FULL-SCREEN VIEWPORT) */}
+      {Boolean(activeGame || selectedPartidaId || activeLobbyGame) && (
+        <div className="fixed inset-0 z-[100] bg-slate-950 text-slate-100 flex flex-col h-screen w-screen overflow-y-auto font-sans select-none animate-fadeIn">
+          {/* Always Visible Floating Exit Button in top corner */}
+          <button
+            type="button"
+            onClick={handleExitMatch}
+            className="fixed top-3 left-3 z-[110] bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 py-2.5 rounded-full shadow-2xl border-2 border-rose-300 flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 uppercase tracking-wider"
+            title="Salir del juego"
+          >
+            <X size={18} />
+            <span>Salir del Juego</span>
+          </button>
 
-        {/* Global Stats */}
-        {!activeGame && !activeLobbyGame && !selectedPartidaId && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 text-left self-start md:self-auto">
-            <span className="text-xl">🏆</span>
-            <div>
-              <span className="text-[10px] text-amber-800 font-black uppercase tracking-wider block">Tu Puntuación Real</span>
-              <span className="text-xs font-bold text-amber-950">{currentUser?.puntos || 0} Pts de Motivación</span>
+          {/* Top Immersion Header */}
+          <div className="sticky top-0 z-40 pl-36 pr-4 py-3 bg-slate-900/90 border-b border-indigo-900/60 backdrop-blur-xl flex items-center justify-between shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-2 bg-slate-950/80 border border-indigo-500/30 px-3.5 py-1.5 rounded-full text-xs font-black text-indigo-300 uppercase tracking-wider shadow-inner">
+                <Sparkles size={14} className="text-amber-400 animate-pulse" />
+                <span>{getActiveGameTitle()}</span>
+                <span className="bg-emerald-500 text-slate-950 text-[9px] px-2 py-0.5 rounded-full font-black animate-pulse">
+                   MODO AISLADO 3D
+                </span>
+              </div>
+            </div>
+
+            {/* In-Game Plato Chat */}
+            <InGameChat
+              partidaId={selectedPartidaId || undefined}
+              currentUser={currentUser}
+              opponentName={getOpponentName()}
+              isVsAi={Boolean(activeGame?.endsWith('_ai'))}
+              gameTitle={getActiveGameTitle()}
+            />
+          </div>
+
+          {/* Canvas Container */}
+          <div className="flex-1 p-3 sm:p-6 max-w-6xl w-full mx-auto flex flex-col justify-center items-center relative">
+            <div className="w-full">
+              {/* ACTIVE SINGLE PLAYER / VS AI MATCHES */}
+              {activeGame === 'chess_ai' && (
+                <ChessVsAiGame
+                  currentUser={currentUser}
+                  desbloqueosUsuarios={desbloqueosUsuarios}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                  onSaveProgress={saveProgress}
+                />
+              )}
+
+              {activeGame === 'battleship_ai' && (
+                <BattleshipVsAiGame
+                  currentUser={currentUser}
+                  desbloqueosUsuarios={desbloqueosUsuarios}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                  onSaveProgress={saveProgress}
+                />
+              )}
+
+              {activeGame === 'bingo_ai' && (
+                <BingoVsAiGame
+                  currentUser={currentUser}
+                  desbloqueosUsuarios={desbloqueosUsuarios}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                  onSaveProgress={saveProgress}
+                />
+              )}
+
+              {activeGame === 'guesswho_ai' && (
+                <GuessWhoVsAiGame
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  desbloqueosUsuarios={desbloqueosUsuarios}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                  onSaveProgress={saveProgress}
+                />
+              )}
+
+              {/* ACTIVE MULTIPLAYER MATCHES */}
+              {selectedPartidaId && activeGame === 'chess' && (
+                <ChessGame
+                  partidaId={selectedPartidaId}
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  partidaData={selectedPartidaData}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                />
+              )}
+
+              {selectedPartidaId && activeGame === 'guesswho' && (
+                <GuessWhoGame
+                  partidaId={selectedPartidaId}
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  partidaData={selectedPartidaData}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                />
+              )}
+
+              {selectedPartidaId && activeGame === 'bingo' && (
+                <BingoGame
+                  partidaId={selectedPartidaId}
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  partidaData={selectedPartidaData}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                />
+              )}
+
+              {selectedPartidaId && activeGame === 'battleship' && (
+                <BattleshipGame
+                  partidaId={selectedPartidaId}
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  partidaData={selectedPartidaData}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                />
+              )}
+
+              {selectedPartidaId && activeGame === 'trivia' && (
+                <TriviaCoopGame
+                  partidaId={selectedPartidaId}
+                  currentUser={currentUser}
+                  usuarios={usuarios}
+                  partidaData={selectedPartidaData}
+                  onExit={handleExitMatch}
+                  onAwardPoints={awardPoints}
+                />
+              )}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Points Reward Banner */}
-      <AnimatePresence>
-        {pointsEarnedMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="bg-emerald-600 border border-emerald-500 text-white px-6 py-4 rounded-2xl shadow-xl font-bold text-sm text-center flex items-center justify-center gap-2 max-w-md mx-auto"
-          >
-            <Sparkles className="animate-pulse" size={18} />
-            {pointsEarnedMessage}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* MULTIPLAYER GAMES LOBBY SCREEN */}
-      {activeLobbyGame && (
-        <GameLobby
-          gameType={activeLobbyGame}
-          gameTitle={
-            activeLobbyGame === 'chess' ? '♟️ Ajedrez Familiar'
-            : activeLobbyGame === 'guesswho' ? '🎭 Adivina Quién'
-            : activeLobbyGame === 'bingo' ? '🎱 Bingo Familiar'
-            : activeLobbyGame === 'trivia' ? '🧠 Trivia Familiar en Equipo'
-            : '🚢 Batalla Naval'
-          }
-          maxPlayers={activeLobbyGame === 'bingo' || activeLobbyGame === 'trivia' ? 6 : 2}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          onStartGame={(id, data) => {
-            setActiveGame(activeLobbyGame);
-            handleStartLobbyMatch(id, data);
-          }}
-          onBack={() => setActiveLobbyGame(null)}
-        />
+        </div>
       )}
 
-      {/* ACTIVE SINGLE PLAYER / VS AI MATCHES */}
-      {activeGame === 'chess_ai' && (
-        <ChessVsAiGame
-          currentUser={currentUser}
-          desbloqueosUsuarios={desbloqueosUsuarios}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-          onSaveProgress={saveProgress}
-        />
-      )}
+      {/* Title Header (Hub Catalog view when no game is active) */}
+      {!activeGame && !selectedPartidaId && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-sans text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight mb-1">
+              ¡Juegos Familiares & vs La Máquina! 🎮
+            </h2>
+            <p className="font-sans text-sm text-gray-500 font-medium">
+              Experiencia Inmersiva 3D estilo Plato App: Desafíos individuales, partidas con IA y multijugador en vivo.
+            </p>
+          </div>
 
-      {activeGame === 'battleship_ai' && (
-        <BattleshipVsAiGame
-          currentUser={currentUser}
-          desbloqueosUsuarios={desbloqueosUsuarios}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-          onSaveProgress={saveProgress}
-        />
-      )}
-
-      {activeGame === 'bingo_ai' && (
-        <BingoVsAiGame
-          currentUser={currentUser}
-          desbloqueosUsuarios={desbloqueosUsuarios}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-          onSaveProgress={saveProgress}
-        />
-      )}
-
-      {activeGame === 'guesswho_ai' && (
-        <GuessWhoVsAiGame
-          currentUser={currentUser}
-          usuarios={usuarios}
-          desbloqueosUsuarios={desbloqueosUsuarios}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-          onSaveProgress={saveProgress}
-        />
-      )}
-
-      {/* ACTIVE MULTIPLAYER MATCHES */}
-      {selectedPartidaId && activeGame === 'chess' && (
-        <ChessGame
-          partidaId={selectedPartidaId}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          partidaData={selectedPartidaData}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-        />
-      )}
-
-      {selectedPartidaId && activeGame === 'guesswho' && (
-        <GuessWhoGame
-          partidaId={selectedPartidaId}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          partidaData={selectedPartidaData}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-        />
-      )}
-
-      {selectedPartidaId && activeGame === 'bingo' && (
-        <BingoGame
-          partidaId={selectedPartidaId}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          partidaData={selectedPartidaData}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-        />
-      )}
-
-      {selectedPartidaId && activeGame === 'battleship' && (
-        <BattleshipGame
-          partidaId={selectedPartidaId}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          partidaData={selectedPartidaData}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-        />
-      )}
-
-      {selectedPartidaId && activeGame === 'trivia' && (
-        <TriviaCoopGame
-          partidaId={selectedPartidaId}
-          currentUser={currentUser}
-          usuarios={usuarios}
-          partidaData={selectedPartidaData}
-          onExit={handleExitMatch}
-          onAwardPoints={awardPoints}
-        />
+          {/* Global Stats */}
+          {!activeLobbyGame && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 text-left self-start md:self-auto">
+              <span className="text-xl">🏆</span>
+              <div>
+                <span className="text-[10px] text-amber-800 font-black uppercase tracking-wider block">Tu Puntuación Real</span>
+                <span className="text-xs font-bold text-amber-950">{currentUser?.puntos || 0} Pts de Motivación</span>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* HUB CATALOG MENU */}

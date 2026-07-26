@@ -62,6 +62,14 @@ export interface Meta {
   visible_familia: boolean;
 }
 
+export interface ConfigTareaCritica {
+  dnd_activo?: boolean;
+  silenciar_llamadas?: boolean;
+  bloquear_redes?: boolean;
+  pantalla_encendida?: boolean;
+  auto_cronometro?: boolean;
+}
+
 export interface TareaDiaria {
   tarea_id: string;
   usuario_id: string;
@@ -70,6 +78,8 @@ export interface TareaDiaria {
   titulo: string;
   categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
   es_prioridad_alta?: boolean;
+  es_critica?: boolean;
+  config_critica?: ConfigTareaCritica;
   hora_programada: string; // HH:MM
   tiempo_estimado_min: number;
   estado: 'pendiente' | 'en_progreso' | 'completada' | 'vencido';
@@ -193,7 +203,9 @@ export type ViewType =
   | 'familia'
   | 'diario'
   | 'ideas'
+  | 'widgets'
   | 'juegos'
+  | 'perfil'
   | 'admin-dashboard'
   | 'admin-families'
   | 'admin-assign-task'

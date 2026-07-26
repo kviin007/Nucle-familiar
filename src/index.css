@@ -36,3 +36,21 @@
   scrollbar-width: none;
 }
 
+/* 3D Perspective Neumorphic Card Hover Animation */
+.card-3d-wrap {
+  perspective: 1000px;
+  perspective-origin: center;
+}
+
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease;
+  will-change: transform;
+}
+
+.card-3d:hover {
+  transform: rotateX(2.5deg) rotateY(-2.5deg) translateZ(8px);
+  box-shadow: 0 20px 30px -10px rgba(99, 102, 241, 0.22);
+}
+
+
