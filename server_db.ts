@@ -282,6 +282,19 @@ export const dbService = {
         // Sort journal entries by date/time (unshifted / latest first)
         diario.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+        // Keep local database cache in sync with Firestore fetched dataset
+        localDatabase = {
+          usuarios,
+          metas,
+          tareas,
+          diario,
+          familias,
+          consecuenciasPlantillas,
+          recompensasPlantillas,
+          consecuenciasPendientes,
+          desbloqueosUsuarios
+        };
+
         return { usuarios, metas, tareas, diario, familias, consecuenciasPlantillas, recompensasPlantillas, consecuenciasPendientes, desbloqueosUsuarios };
       } catch (err) {
         handleFirestoreError(err, "getState");

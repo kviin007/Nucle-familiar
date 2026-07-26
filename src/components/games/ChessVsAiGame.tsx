@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chess, Square, Move } from 'chess.js';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { ChessPieceSvg } from './ChessPieceIcons';
 import { 
   Trophy, 
   ArrowLeft, 
@@ -27,11 +28,6 @@ interface ChessVsAiGameProps {
   onAwardPoints: (points: number) => void;
   onSaveProgress?: (game: string, score: number) => void;
 }
-
-const PIECE_SYMBOLS: Record<string, string> = {
-  wP: '♙', wN: '♘', wB: '♗', wR: '♖', wQ: '♕', wK: '♔',
-  bP: '♟', bN: '♞', bB: '♝', bR: '♜', bQ: '♛', bK: '♚'
-};
 
 const PIECE_VALUES: Record<string, number> = {
   p: 10,
@@ -513,16 +509,20 @@ export default function ChessVsAiGame({ currentUser, desbloqueosUsuarios = [], o
               Piezas Capturadas
             </h4>
             <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-2xl text-lg">
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 items-center">
                 <span className="text-xs font-bold text-gray-400 mr-1">Tú:</span>
                 {capturedByWhite.map((p, idx) => (
-                  <span key={idx} className="text-slate-900">{PIECE_SYMBOLS['b' + p.toUpperCase()]}</span>
+                  <div key={idx} className="w-5 h-5">
+                    <ChessPieceSvg type={p.toLowerCase() as any} color="b" />
+                  </div>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 items-center">
                 <span className="text-xs font-bold text-gray-400 mr-1">{selectedBot.name}:</span>
                 {capturedByBlack.map((p, idx) => (
-                  <span key={idx} className="text-slate-900">{PIECE_SYMBOLS['w' + p.toUpperCase()]}</span>
+                  <div key={idx} className="w-5 h-5">
+                    <ChessPieceSvg type={p.toLowerCase() as any} color="w" />
+                  </div>
                 ))}
               </div>
             </div>
@@ -551,46 +551,48 @@ export default function ChessVsAiGame({ currentUser, desbloqueosUsuarios = [], o
                   const isSelected = selectedSquare === squareName;
                   const isPossible = possibleMoves.includes(squareName);
                   const isHintTarget = hintMove?.to === squareName || hintMove?.from === squareName;
+                  const isTargetEnemy = isPossible && square !== null;
 
                   let bgColor = isLight ? 'bg-[#eeeed2]' : 'bg-[#769656]';
-                  if (isSelected) bgColor = 'bg-amber-300 ring-4 ring-amber-400 inset-0 z-10';
-                  else if (isHintTarget) bgColor = 'bg-amber-400 animate-pulse';
+                  if (isSelected) bgColor = 'bg-amber-300/60 ring-4 ring-amber-400 z-10 shadow-[0_0_15px_rgba(251,191,36,0.6)]';
+                  else if (isHintTarget) bgColor = 'bg-amber-400/80 animate-pulse';
 
                   return (
                     <div
                       key={squareName}
                       onClick={() => handleSquareClick(squareName)}
-                      className={`relative flex items-center justify-center cursor-pointer transition-all select-none ${bgColor}`}
+                      className={`relative flex items-center justify-center cursor-pointer transition-colors select-none overflow-hidden ${bgColor}`}
                     >
                       {/* Square Coordinate Labels */}
                       {colIndex === 0 && (
-                        <span className={`absolute top-0.5 left-1 text-[9px] font-black ${isLight ? 'text-[#769656]' : 'text-[#eeeed2]'}`}>
+                        <span className={`absolute top-0.5 left-1 text-[9px] font-black z-20 ${isLight ? 'text-[#769656]' : 'text-[#eeeed2]'}`}>
                           {8 - rowIndex}
                         </span>
                       )}
                       {rowIndex === 7 && (
-                        <span className={`absolute bottom-0.5 right-1 text-[9px] font-black ${isLight ? 'text-[#769656]' : 'text-[#eeeed2]'}`}>
+                        <span className={`absolute bottom-0.5 right-1 text-[9px] font-black z-20 ${isLight ? 'text-[#769656]' : 'text-[#eeeed2]'}`}>
                           {String.fromCharCode(97 + colIndex)}
                         </span>
                       )}
 
-                      {/* Possible Move Indicator Dot */}
+                      {/* Possible Move Soft Halo Ring */}
                       {isPossible && !square && (
-                        <div className="w-3.5 h-3.5 rounded-full bg-amber-600/60 shadow-xs" />
+                        <div className="w-4 h-4 rounded-full bg-amber-400/50 border-2 border-amber-400/90 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.5)] z-20" />
                       )}
-                      {isPossible && square && (
-                        <div className="absolute inset-0 border-4 border-rose-500 rounded-full animate-ping opacity-75" />
+                      {isTargetEnemy && (
+                        <div className="absolute inset-0 border-4 border-rose-500 bg-rose-500/20 animate-pulse rounded-lg z-20" />
                       )}
 
-                      {/* Chess Piece Symbol */}
+                      {/* Chess Piece Vector with Motion Sliding */}
                       {square && (
-                        <span
-                          className={`text-3xl sm:text-4xl drop-shadow-md transition-transform ${
-                            square.color === 'w' ? 'text-white' : 'text-slate-950'
-                          } ${isSelected ? 'scale-110' : 'hover:scale-105'}`}
+                        <motion.div
+                          layout
+                          layoutId={`piece-ai-${square.color}-${square.type}-${squareName}`}
+                          transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                          className="w-[82%] h-[82%] flex items-center justify-center z-10 p-0.5"
                         >
-                          {PIECE_SYMBOLS[square.color + square.type.toUpperCase()]}
-                        </span>
+                          <ChessPieceSvg type={square.type as any} color={square.color} />
+                        </motion.div>
                       )}
                     </div>
                   );

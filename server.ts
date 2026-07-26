@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { dbService } from "./server_db";
 import { getAuth } from "firebase-admin/auth";
 import { GoogleGenAI } from "@google/genai";
+import cron from "node-cron";
 
 async function startServer() {
   const app = express();
@@ -863,6 +864,60 @@ Devuelve ÚNICAMENTE un JSON con la estructura:
     }
   });
 
+  // API Route: Ayuda para reflexionar en Diario (Sugerir preguntas e ideas de inicio)
+  app.post("/api/gemini/journal-prompt", async (req, res) => {
+    const { emotion, recentEntries } = req.body;
+
+    try {
+      const ai = getGeminiClient();
+      const entriesContext = Array.isArray(recentEntries) && recentEntries.length > 0
+        ? `Las entradas recientes del usuario esta semana son:\n- ${recentEntries.slice(0, 4).join("\n- ")}`
+        : "El usuario aún no ha guardado entradas recientes esta semana.";
+
+      const prompt = `Un miembro de la familia quiere escribir en su diario hoy y necesita inspiración para reflexionar.
+Emoción seleccionada actualmente: "${emotion || "Good"}".
+${entriesContext}
+
+Tu objetivo es darle un punto de partida inspirador y preguntas reflexivas para que ÉL/ELLA escriba sus propios pensamientos.
+REGLA ABSOLUTA: NUNCA redactes ni escribas la entrada del diario por el usuario. Únicamente proporciona preguntas guía y un breve resumen empático de cómo viene su semana.
+
+Devuelve ÚNICAMENTE un JSON con la siguiente estructura:
+{
+  "weeklySummary": "Un resumen empático o mensaje motivador de 1-2 frases sobre su estado emocional o semana.",
+  "questions": [
+    "¿Pregunta o punto de partida inspirador 1?",
+    "¿Pregunta o punto de partida inspirador 2?",
+    "¿Pregunta o punto de partida inspirador 3?"
+  ]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("Sin respuesta del modelo.");
+      }
+
+      const promptData = parseCleanJson(response.text);
+      res.json(promptData);
+    } catch (err: any) {
+      console.error("[Gemini Journal Prompt Error]", err);
+      res.json({
+        weeklySummary: "Reflexionar sobre tu día a día te ayuda a valorar tus pequeños logros y descargar tensiones.",
+        questions: [
+          "¿Qué momento sencillo de hoy te hizo sonreír o sentir paz?",
+          "¿Hubo algún reto hoy y qué aprendizaje o cualidad tuya te ayudó a afrontarlo?",
+          "¿Por qué pequeña cosa o gesto de alguien de tu familia te sientes agradecido hoy?"
+        ]
+      });
+    }
+  });
+
   // API Route: Organizar Ideas con Gemini AI
   app.post("/api/gemini/organize-idea", async (req, res) => {
     const { ideaText, category } = req.body;
@@ -978,6 +1033,69 @@ Devuelve ÚNICAMENTE el JSON válido. Sin formato markdown ni texto adicional.`;
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Vinculo Backend] Server running on http://0.0.0.0:${PORT}`);
+
+    // Configurar tareas programadas con node-cron
+    console.log("[Cron Engine] Inicializando tareas programadas...");
+
+    // 1. Cada 5 minutos: Comprobar y marcar tareas vencidas
+    cron.schedule("*/5 * * * *", async () => {
+      const timestamp = new Date().toISOString();
+      console.log(`[Cron Job - Check Overdue] [${timestamp}] Iniciando verificación automática de tareas vencidas...`);
+      try {
+        const result = await dbService.checkOverdueTasks();
+        console.log(`[Cron Job - Check Overdue] [${timestamp}] Éxito. Tareas actualizadas a 'vencido': ${result.updatedCount ?? 0}`);
+      } catch (err: any) {
+        console.error(`[Cron Job - Check Overdue] [${timestamp}] Error al verificar tareas vencidas:`, err?.message || err);
+      }
+    });
+
+    // 2. Cada domingo a las 23:59 (hora de Colombia, America/Bogota):
+    // Evaluará el cumplimiento semanal de metas de todas las familias y regenerará las tareas de la siguiente semana.
+    cron.schedule("59 23 * * 0", async () => {
+      const timestamp = new Date().toISOString();
+      console.log(`[Cron Job - Weekly Evaluation] [${timestamp}] Iniciando evaluación semanal de metas y regeneración de tareas (America/Bogota)...`);
+      try {
+        // Obtener el estado actual (sincroniza familias y metas de Firestore o Base Local)
+        const state = await dbService.getState();
+        const familias = state.familias || [];
+        console.log(`[Cron Job - Weekly Evaluation] Procesando ${familias.length} familia(s) encontrada(s)...`);
+
+        let evaluatedFamilies = 0;
+        for (const fam of familias) {
+          if (fam.familia_id) {
+            try {
+              await dbService.evaluarCumplimientoMetas(fam.familia_id);
+              evaluatedFamilies++;
+              console.log(`[Cron Job - Weekly Evaluation] Cumplimiento evaluado exitosamente para la familia: ${fam.familia_id} (${fam.nombre || 'Sin Nombre'})`);
+            } catch (famErr: any) {
+              console.error(`[Cron Job - Weekly Evaluation] Error al evaluar la familia ${fam.familia_id}:`, famErr?.message || famErr);
+            }
+          }
+        }
+
+        // Regenerar tareas automáticas para todas las metas activas
+        const activeAutoGoals = (state.metas || []).filter(m => m.generar_tareas_automaticas);
+        console.log(`[Cron Job - Weekly Evaluation] Regenerando tareas para ${activeAutoGoals.length} meta(s) con generación automática...`);
+        let regeneratedGoals = 0;
+
+        for (const goal of activeAutoGoals) {
+          try {
+            await dbService.generarTareasDesdeMetas(goal);
+            regeneratedGoals++;
+          } catch (goalErr: any) {
+            console.error(`[Cron Job - Weekly Evaluation] Error al regenerar tareas para la meta ${goal.meta_id}:`, goalErr?.message || goalErr);
+          }
+        }
+
+        console.log(`[Cron Job - Weekly Evaluation] [${timestamp}] Finalizado con éxito. Familias evaluadas: ${evaluatedFamilies}/${familias.length}, Metas regeneradas: ${regeneratedGoals}/${activeAutoGoals.length}`);
+      } catch (err: any) {
+        console.error(`[Cron Job - Weekly Evaluation] [${timestamp}] Error global en la evaluación semanal:`, err?.message || err);
+      }
+    }, {
+      timezone: "America/Bogota"
+    });
+
+    console.log("[Cron Engine] Tareas programadas con node-cron configuradas correctamente.");
   });
 }
 

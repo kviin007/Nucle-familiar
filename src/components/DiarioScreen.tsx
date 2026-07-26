@@ -45,6 +45,39 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
     activityIdea: string;
   } | null>(null);
 
+  // Gemini AI Journal Prompt state
+  const [promptLoading, setPromptLoading] = useState<boolean>(false);
+  const [promptData, setPromptData] = useState<{
+    weeklySummary: string;
+    questions: string[];
+  } | null>(null);
+
+  const handleGetJournalPrompt = async () => {
+    setPromptLoading(true);
+    try {
+      const recentUserEntries = diario
+        .filter(e => e.usuario_id === currentUser?.uid)
+        .map(e => e.texto);
+
+      const res = await fetch('/api/gemini/journal-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emotion: mood,
+          recentEntries: recentUserEntries
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPromptData(data);
+      }
+    } catch (e) {
+      console.error("Error fetching journal prompt:", e);
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+
   const handleGetReflection = async () => {
     if (!text.trim()) return;
     setReflectionLoading(true);
@@ -200,15 +233,97 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
         <div className="lg:col-span-8 space-y-8">
           {/* Editor Card */}
           <div className="bg-white rounded-3xl p-6 border border-indigo-50/60 shadow-xl shadow-indigo-100/20 space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="font-sans text-base font-extrabold text-brand-dark flex items-center gap-2">
                 <span className="material-symbols-outlined text-brand-primary">edit_note</span>
                 ¿Cómo te sientes hoy?
               </h3>
-              <span className="font-sans text-xs text-gray-400 font-medium">
-                {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
-              </span>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleGetJournalPrompt}
+                  disabled={promptLoading}
+                  className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:opacity-95 text-white rounded-full font-sans text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  title="Obtener preguntas e ideas para reflexionar en tu diario de hoy"
+                >
+                  {promptLoading ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-xs">sync</span>
+                      <span>Generando idea...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-xs text-amber-200">auto_awesome</span>
+                      <span>✨ Ayúdame a reflexionar</span>
+                    </>
+                  )}
+                </button>
+                <span className="font-sans text-xs text-gray-400 font-medium hidden md:inline">
+                  {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
+                </span>
+              </div>
             </div>
+
+            {/* Inspirational Reflection Helper Card (Contextual AI) */}
+            {promptData && (
+              <div className="bg-gradient-to-br from-amber-50/90 via-purple-50/80 to-indigo-50/90 p-4 rounded-2xl border border-amber-200 space-y-3 animate-fade-in shadow-xs">
+                <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-amber-600 text-lg">auto_awesome</span>
+                    <h4 className="font-sans text-xs font-bold text-amber-950 uppercase tracking-wider">
+                      Guía para tu Reflexión de Hoy
+                    </h4>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setPromptData(null)} 
+                    className="text-gray-400 hover:text-gray-600 text-xs cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-base">close</span>
+                  </button>
+                </div>
+
+                {promptData.weeklySummary && (
+                  <p className="font-sans text-xs text-amber-900 font-medium italic leading-snug">
+                    "{promptData.weeklySummary}"
+                  </p>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-purple-900">
+                    Preguntas e ideas para inspirar tu diario:
+                  </p>
+                  <ul className="space-y-1.5">
+                    {promptData.questions.map((q, idx) => (
+                      <li 
+                        key={idx} 
+                        className="bg-white/90 p-2.5 rounded-xl border border-purple-100/80 text-xs text-gray-800 font-medium flex items-center justify-between gap-2 shadow-2xs hover:bg-white transition-all"
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="text-amber-500 font-bold">•</span>
+                          <span>{q}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Append quote header as a prompt header without replacing text
+                            setText(prev => prev ? `${prev}\n\n[Reflexión: ${q}]\n` : `[Reflexión: ${q}]\n`);
+                          }}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline shrink-0 cursor-pointer"
+                          title="Usar esta pregunta como encabezado de tu entrada"
+                        >
+                          Usar tema
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-gray-400 italic pt-1">
+                    * Gemini no escribirá la entrada por ti. Selecciona un tema o responde en tus propias palabras a continuación.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Mood Selector */}
             <div className="grid grid-cols-5 gap-2">

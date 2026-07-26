@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface GeminiAdvisorModalProps {
   isOpen: boolean;
   onClose: () => void;
   familyName?: string;
+  initialPrompt?: string;
+  modalTitle?: string;
 }
 
 interface AdvisorResponse {
@@ -12,11 +14,27 @@ interface AdvisorResponse {
   suggestedAction?: string;
 }
 
-export default function GeminiAdvisorModal({ isOpen, onClose, familyName }: GeminiAdvisorModalProps) {
+export default function GeminiAdvisorModal({ isOpen, onClose, familyName, initialPrompt, modalTitle }: GeminiAdvisorModalProps) {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AdvisorResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialPrompt && initialPrompt.trim()) {
+        setPrompt(initialPrompt);
+        handleAsk(initialPrompt);
+      } else {
+        setPrompt('');
+        setResult(null);
+        setError(null);
+      }
+    } else {
+      setResult(null);
+      setError(null);
+    }
+  }, [isOpen, initialPrompt]);
 
   if (!isOpen) return null;
 
@@ -76,7 +94,7 @@ export default function GeminiAdvisorModal({ isOpen, onClose, familyName }: Gemi
             </div>
             <div>
               <h3 className="font-sans text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
-                Asistente Familiar Gemini
+                {modalTitle || 'Asistente Familiar Gemini'}
                 <span className="bg-amber-400 text-indigo-950 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full">
                   IA
                 </span>

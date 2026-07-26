@@ -59,6 +59,8 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
   const [isGeminiAdvisorOpen, setIsGeminiAdvisorOpen] = useState<boolean>(false);
+  const [geminiAdvisorPrompt, setGeminiAdvisorPrompt] = useState<string>('');
+  const [geminiAdvisorTitle, setGeminiAdvisorTitle] = useState<string>('Asistente Gemini IA');
 
   // Toast System
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
@@ -1177,20 +1179,6 @@ export default function App() {
               ))}
             </>
           )}
-
-          {/* Gemini AI Assistant Button (Only visible to Admin) */}
-          {isAdmin && (
-            <>
-              <div className="h-px bg-slate-100 my-3" />
-              <button
-                onClick={() => setIsGeminiAdvisorOpen(true)}
-                className="flex items-center gap-3 px-4 py-3 rounded-2xl font-sans text-xs font-bold transition-all text-left cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md hover:shadow-lg hover:opacity-95"
-              >
-                <span className="material-symbols-outlined text-lg text-amber-300">auto_awesome</span>
-                <span>Asistente Gemini IA</span>
-              </button>
-            </>
-          )}
         </div>
 
         {/* Footer actions */}
@@ -1228,15 +1216,6 @@ export default function App() {
           <h1 className="font-sans text-base font-extrabold text-brand-dark">Núcleo Familiar</h1>
         </div>
         <div className="flex items-center gap-2">
-          {/* Gemini AI Advisor Button */}
-          <button
-            onClick={() => setIsGeminiAdvisorOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-sans text-xs font-bold shadow-xs cursor-pointer hover:opacity-95"
-          >
-            <span className="material-symbols-outlined text-sm text-amber-300">auto_awesome</span>
-            <span>IA</span>
-          </button>
-
           {/* Quick sync */}
           <button
             onClick={handleResetDatabase}
@@ -1313,6 +1292,11 @@ export default function App() {
                 onCreateRewardTemplate={handleCreateRewardTemplate}
                 onResolvePendingConsequence={handleResolvePendingConsequence}
                 onEvaluateCompliance={handleEvaluateCompliance}
+                onOpenGeminiAdvisorWithPrompt={(promptText) => {
+                  setGeminiAdvisorPrompt(promptText);
+                  setGeminiAdvisorTitle('✨ Sugerencia de Meta con IA');
+                  setIsGeminiAdvisorOpen(true);
+                }}
               />
             )}
             {view === 'familia' && (
@@ -1398,6 +1382,11 @@ export default function App() {
                 onSelectUser={(uid) => {
                   setSelectedUserId(uid);
                   setView('admin-user-detail');
+                }}
+                onOpenGeminiAdvisor={() => {
+                  setGeminiAdvisorPrompt('');
+                  setGeminiAdvisorTitle('Asistente Gemini IA (General)');
+                  setIsGeminiAdvisorOpen(true);
                 }}
               />
             )}
@@ -1561,6 +1550,8 @@ export default function App() {
         isOpen={isGeminiAdvisorOpen}
         onClose={() => setIsGeminiAdvisorOpen(false)}
         familyName={familias[0]?.nombre}
+        initialPrompt={geminiAdvisorPrompt}
+        modalTitle={geminiAdvisorTitle}
       />
     </div>
   );

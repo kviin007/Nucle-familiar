@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Usuario } from '../../types';
 import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
-import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck, Users, Clock, AlertCircle } from 'lucide-react';
+import { Trophy, ArrowLeft, Sparkles, Volume2, UserCheck, Users, Clock, AlertCircle, Star } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
 interface BingoGameProps {
@@ -13,6 +14,14 @@ interface BingoGameProps {
   onExit: () => void;
   onAwardPoints: (points: number) => void;
 }
+
+const COLUMN_CONFIG = [
+  { letter: 'B', headerBg: 'bg-gradient-to-b from-rose-500 to-orange-500', circleBg: 'bg-gradient-to-br from-rose-500 to-orange-600 border-rose-300' },
+  { letter: 'I', headerBg: 'bg-gradient-to-b from-sky-400 to-cyan-500', circleBg: 'bg-gradient-to-br from-sky-400 to-cyan-600 border-sky-300' },
+  { letter: 'N', headerBg: 'bg-gradient-to-b from-emerald-500 to-teal-500', circleBg: 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-300' },
+  { letter: 'G', headerBg: 'bg-gradient-to-b from-blue-500 to-indigo-600', circleBg: 'bg-gradient-to-br from-blue-500 to-indigo-700 border-blue-300' },
+  { letter: 'O', headerBg: 'bg-gradient-to-b from-purple-500 to-fuchsia-600', circleBg: 'bg-gradient-to-br from-purple-500 to-fuchsia-700 border-purple-300' },
+];
 
 export default function BingoGame({
   partidaId,
@@ -112,6 +121,15 @@ export default function BingoGame({
 
   const calledNumbers: number[] = localPartida?.numeros_cantados || [];
   const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
+  const [animBall, setAnimBall] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (lastCalledNumber) {
+      setAnimBall(lastCalledNumber);
+      const timer = setTimeout(() => setAnimBall(null), 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [lastCalledNumber]);
 
   // Inactive host helper
   const getLastUpdateMillis = (partida: any) => {
@@ -330,10 +348,43 @@ export default function BingoGame({
         </div>
       )}
 
+      {/* Falling Ball Animation Overlay */}
+      <AnimatePresence>
+        {animBall && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs pointer-events-none"
+          >
+            <motion.div
+              initial={{ y: -200, scale: 0.2, rotate: -180, opacity: 0 }}
+              animate={{ y: 0, scale: 1, rotate: 0, opacity: 1 }}
+              exit={{ scale: 0.2, opacity: 0, transition: { duration: 0.3 } }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              className="flex flex-col items-center justify-center gap-2"
+            >
+              <div className="w-36 h-36 md:w-44 md:h-44 rounded-full bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 border-4 border-white shadow-[0_0_50px_rgba(251,191,36,0.8)] flex flex-col items-center justify-center text-slate-950 font-black relative overflow-hidden">
+                <div className="absolute inset-2 rounded-full border-2 border-white/50 pointer-events-none" />
+                <span className="text-xl md:text-2xl tracking-widest text-slate-900/80 uppercase font-black">
+                  {getLetterForNumber(animBall)}
+                </span>
+                <span className="text-5xl md:text-6xl font-black drop-shadow">
+                  {animBall}
+                </span>
+              </div>
+              <span className="text-white font-extrabold text-base tracking-wider bg-slate-900/80 px-4 py-1.5 rounded-full border border-white/20 shadow">
+                ¡NUEVA BALOTA CANTADA!
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Number Caller Banner */}
       <div className="bg-gradient-to-r from-brand-primary to-indigo-900 text-white rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <div className="w-20 h-20 bg-amber-400 text-slate-950 font-black text-3xl rounded-3xl flex items-center justify-center shadow-lg animate-bounce">
+          <div className="w-20 h-20 bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 font-black text-2xl md:text-3xl rounded-3xl flex items-center justify-center shadow-lg border-2 border-amber-200">
             {lastCalledNumber ? `${getLetterForNumber(lastCalledNumber)}-${lastCalledNumber}` : '—'}
           </div>
           <div className="text-left">
@@ -375,38 +426,59 @@ export default function BingoGame({
         </div>
       </div>
 
-      {/* 5x5 Bingo Card */}
-      <div className="bg-white rounded-3xl border border-indigo-100 p-6 shadow-xl max-w-md mx-auto">
-        <div className="grid grid-cols-5 gap-2 mb-3 text-center font-black text-lg text-brand-primary">
-          <div>B</div>
-          <div>I</div>
-          <div>N</div>
-          <div>G</div>
-          <div>O</div>
+      {/* 5x5 Classic B-I-N-G-O Card */}
+      <div className="bg-white rounded-[32px] border-2 border-indigo-100 p-6 shadow-2xl max-w-md mx-auto space-y-3">
+        {/* Colorful Column Headers */}
+        <div className="grid grid-cols-5 gap-2 text-center font-black text-xl">
+          {COLUMN_CONFIG.map((col, idx) => (
+            <div
+              key={col.letter}
+              className={`${col.headerBg} text-white py-2.5 rounded-2xl shadow-md tracking-wider`}
+            >
+              {col.letter}
+            </div>
+          ))}
         </div>
 
+        {/* 5x5 Cells Grid */}
         <div className="grid grid-cols-5 gap-2">
           {activeCard.map((row, r) =>
             row.map((val, c) => {
               const isCenter = r === 2 && c === 2;
               const isMarked = activeMarked[r]?.[c];
               const isCalled = calledNumbers.includes(val);
+              const colCfg = COLUMN_CONFIG[c];
 
               return (
                 <button
                   key={`${r}-${c}`}
                   onClick={() => toggleCellMark(r, c)}
-                  className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center font-black text-sm transition-all cursor-pointer ${
+                  className={`aspect-square rounded-2xl border-2 flex items-center justify-center font-black text-sm transition-all cursor-pointer relative overflow-hidden ${
                     isCenter
-                      ? 'bg-amber-400 text-slate-900 border-amber-500 shadow-md'
+                      ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-sm'
                       : isMarked
-                      ? 'bg-emerald-500 text-white border-emerald-600 shadow'
+                      ? 'bg-slate-900 border-slate-800 shadow-md scale-95'
                       : isCalled
                       ? 'bg-indigo-50 border-indigo-300 text-indigo-900 hover:bg-indigo-100'
-                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  {isCenter ? '★ LIBRE' : val}
+                  {isCenter ? (
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <Star size={18} className="text-amber-500 fill-amber-400 drop-shadow-xs" />
+                      <span className="text-[9px] font-black text-amber-800 tracking-tighter">LIBRE</span>
+                    </div>
+                  ) : isMarked ? (
+                    <motion.div
+                      initial={{ scale: 0.3 }}
+                      animate={{ scale: 1 }}
+                      className={`w-full h-full rounded-xl ${colCfg.circleBg} text-white font-black text-sm sm:text-base flex items-center justify-center shadow-inner border`}
+                    >
+                      {val}
+                    </motion.div>
+                  ) : (
+                    <span>{val}</span>
+                  )}
                 </button>
               );
             })

@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Usuario } from '../../types';
 import { doc, updateDoc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
-import { Trophy, ArrowLeft, RotateCw, UserCheck, CheckCircle } from 'lucide-react';
+import { Trophy, ArrowLeft, RotateCw, UserCheck, CheckCircle, Crosshair, Anchor, Flame, ShieldAlert } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { ShipSvg, ExplosionEffect, SplashEffect } from './BattleshipShipIcons';
 
 interface BattleshipGameProps {
   partidaId: string;
@@ -262,76 +264,136 @@ export default function BattleshipGame({ partidaId, currentUser, usuarios, parti
 
       {/* Boards Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
         {/* Enemy Target Board */}
-        <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-xl space-y-3">
-          <h3 className="font-extrabold text-sm text-gray-900 flex items-center justify-between">
-            <span>Tablero de Disparos (Rival)</span>
-            <span className="text-xs text-rose-500 font-bold">🎯 Blanco</span>
-          </h3>
+        <div className="bg-slate-900 p-5 rounded-[32px] border-2 border-slate-800 shadow-2xl space-y-3 relative overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h3 className="font-extrabold text-sm text-cyan-300 flex items-center gap-2">
+              <Crosshair size={16} className="text-rose-400 animate-spin" />
+              <span>Mapa Náutico de Ataque (Rival)</span>
+            </h3>
+            <span className="text-[10px] bg-rose-500/20 text-rose-300 font-extrabold px-2.5 py-1 rounded-full border border-rose-500/30 uppercase tracking-wider">
+              Disparos: {Object.keys(myShots).length}
+            </span>
+          </div>
 
-          <div className="grid grid-cols-10 gap-1 aspect-square bg-slate-900 p-2 rounded-2xl">
-            {Array(10).fill(null).map((_, r) =>
-              Array(10).fill(null).map((_, c) => {
-                const key = `${r},${c}`;
-                const shotState = myShots[key];
+          {/* Grid with A-J and 1-10 labels */}
+          <div className="flex flex-col gap-1">
+            {/* Column Labels A-J */}
+            <div className="grid grid-cols-11 gap-1 text-center font-mono text-[10px] font-bold text-cyan-500/80">
+              <div />
+              {['A','B','C','D','E','F','G','H','I','J'].map(col => (
+                <div key={col}>{col}</div>
+              ))}
+            </div>
 
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleFireShot(r, c)}
-                    disabled={!isMyTurn || !isPhaseCombat}
-                    className={`aspect-square rounded-lg text-xs font-black flex items-center justify-center transition-all ${
-                      shotState === 'tocado'
-                        ? 'bg-rose-600 text-white animate-pulse'
-                        : shotState === 'agua'
-                        ? 'bg-cyan-900/60 text-cyan-300'
-                        : 'bg-slate-800 hover:bg-indigo-900/60 border border-slate-700/50 cursor-pointer'
-                    }`}
-                  >
-                    {shotState === 'tocado' ? '💥' : shotState === 'agua' ? '💧' : ''}
-                  </button>
-                );
-              })
-            )}
+            {/* 10 Rows */}
+            {Array(10).fill(null).map((_, r) => (
+              <div key={r} className="grid grid-cols-11 gap-1 items-center">
+                {/* Row Label 1-10 */}
+                <div className="font-mono text-[10px] font-bold text-cyan-500/80 text-center">
+                  {r + 1}
+                </div>
+
+                {Array(10).fill(null).map((_, c) => {
+                  const key = `${r},${c}`;
+                  const shotState = myShots[key];
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleFireShot(r, c)}
+                      disabled={!isMyTurn || !isPhaseCombat}
+                      className={`aspect-square rounded-md text-xs font-black flex items-center justify-center transition-all relative overflow-hidden ${
+                        shotState === 'tocado'
+                          ? 'bg-rose-950/80 border border-rose-500/80 shadow-[0_0_12px_rgba(244,63,94,0.6)]'
+                          : shotState === 'agua'
+                          ? 'bg-cyan-950/80 border border-cyan-800/60'
+                          : 'bg-slate-950/70 hover:bg-cyan-950/90 border border-cyan-900/40 hover:border-cyan-400/60 cursor-pointer'
+                      }`}
+                    >
+                      {shotState === 'tocado' ? (
+                        <ExplosionEffect className="w-5 h-5" />
+                      ) : shotState === 'agua' ? (
+                        <SplashEffect className="w-4 h-4" />
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-cyan-500/20" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Own Fleet Board */}
-        <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-xl space-y-3">
-          <h3 className="font-extrabold text-sm text-gray-900 flex items-center justify-between">
-            <span>Tu Flota y Radar Propio</span>
-            <span className="text-xs text-indigo-600 font-bold">🛡️ Defensa</span>
-          </h3>
+        <div className="bg-slate-900 p-5 rounded-[32px] border-2 border-slate-800 shadow-2xl space-y-3 relative overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h3 className="font-extrabold text-sm text-cyan-300 flex items-center gap-2">
+              <Anchor size={16} className="text-cyan-400" />
+              <span>Tu Flota y Radar de Defensa</span>
+            </h3>
+            <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-extrabold px-2.5 py-1 rounded-full border border-cyan-500/30 uppercase tracking-wider">
+              {placementReady ? 'Estatus: Desplegado' : 'En Posicionamiento'}
+            </span>
+          </div>
 
-          <div className="grid grid-cols-10 gap-1 aspect-square bg-slate-900 p-2 rounded-2xl">
-            {Array(10).fill(null).map((_, r) =>
-              Array(10).fill(null).map((_, c) => {
-                const key = `${r},${c}`;
-                const hasShip = !!placedShips[key];
-                const receivedShot = enemyShotsReceived[key];
+          {/* Grid with A-J and 1-10 labels */}
+          <div className="flex flex-col gap-1">
+            {/* Column Labels A-J */}
+            <div className="grid grid-cols-11 gap-1 text-center font-mono text-[10px] font-bold text-cyan-500/80">
+              <div />
+              {['A','B','C','D','E','F','G','H','I','J'].map(col => (
+                <div key={col}>{col}</div>
+              ))}
+            </div>
 
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleCellClickPlacement(r, c)}
-                    disabled={isPhaseCombat}
-                    className={`aspect-square rounded-lg text-xs font-black flex items-center justify-center transition-all ${
-                      receivedShot === 'tocado'
-                        ? 'bg-rose-600 text-white'
-                        : receivedShot === 'agua'
-                        ? 'bg-cyan-950 text-cyan-400'
-                        : hasShip
-                        ? 'bg-indigo-600 text-white border border-indigo-400'
-                        : 'bg-slate-800 border border-slate-700/50 hover:bg-slate-700 cursor-pointer'
-                    }`}
-                  >
-                    {receivedShot === 'tocado' ? '💥' : receivedShot === 'agua' ? '💧' : hasShip ? '🚢' : ''}
-                  </button>
-                );
-              })
-            )}
+            {/* 10 Rows */}
+            {Array(10).fill(null).map((_, r) => (
+              <div key={r} className="grid grid-cols-11 gap-1 items-center">
+                {/* Row Label 1-10 */}
+                <div className="font-mono text-[10px] font-bold text-cyan-500/80 text-center">
+                  {r + 1}
+                </div>
+
+                {Array(10).fill(null).map((_, c) => {
+                  const key = `${r},${c}`;
+                  const hasShip = !!placedShips[key];
+                  const receivedShot = enemyShotsReceived[key];
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleCellClickPlacement(r, c)}
+                      disabled={isPhaseCombat}
+                      className={`aspect-square rounded-md text-xs font-black flex items-center justify-center transition-all relative overflow-hidden ${
+                        receivedShot === 'tocado'
+                          ? 'bg-rose-950/90 border border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.6)]'
+                          : receivedShot === 'agua'
+                          ? 'bg-cyan-950/90 border border-cyan-800/60'
+                          : hasShip
+                          ? 'bg-indigo-900/90 border border-indigo-400/80 shadow-[0_0_8px_rgba(99,102,241,0.5)]'
+                          : 'bg-slate-950/70 border border-cyan-900/30 hover:bg-slate-800 cursor-pointer'
+                      }`}
+                    >
+                      {receivedShot === 'tocado' ? (
+                        <ExplosionEffect className="w-5 h-5" />
+                      ) : receivedShot === 'agua' ? (
+                        <SplashEffect className="w-4 h-4" />
+                      ) : hasShip ? (
+                        <div className="w-2.5 h-2.5 rounded-sm bg-cyan-300 border border-white shadow-xs" />
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-cyan-500/20" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
+
       </div>
     </div>
   );

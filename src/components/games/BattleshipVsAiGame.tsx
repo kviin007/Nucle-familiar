@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { ShipSvg, ExplosionEffect, SplashEffect } from './BattleshipShipIcons';
 import { 
   Trophy, 
   ArrowLeft, 
@@ -509,74 +510,118 @@ export default function BattleshipVsAiGame({ currentUser, desbloqueosUsuarios = 
             <div className="bg-slate-900 p-4 rounded-[28px] border-2 border-slate-800 shadow-xl space-y-2">
               <div className="flex justify-between items-center text-white text-xs font-bold px-1">
                 <span className="text-cyan-300 flex items-center gap-1">
-                  🛡️ Tu Cuadrícula (Flota)
+                  <Anchor size={14} className="text-cyan-400" /> Tu Cuadrícula (Flota)
                 </span>
                 <span className="text-slate-400 text-[10px]">
                   {Object.keys(userFleet).length}/{TOTAL_SHIP_CELLS} Barcos
                 </span>
               </div>
 
-              <div className="grid grid-cols-10 grid-rows-10 gap-0.5 w-full aspect-square bg-slate-950 p-1 rounded-xl">
-                {Array.from({ length: GRID_SIZE }).map((_, r) =>
-                  Array.from({ length: GRID_SIZE }).map((_, c) => {
-                    const key = `${r},${c}`;
-                    const hasShip = userFleet[key];
-                    const shotStatus = botShots[key];
+              {/* Grid with A-J and 1-10 labels */}
+              <div className="flex flex-col gap-1 bg-slate-950 p-2 rounded-xl">
+                <div className="grid grid-cols-11 gap-0.5 text-center font-mono text-[9px] font-bold text-cyan-500/80">
+                  <div />
+                  {['A','B','C','D','E','F','G','H','I','J'].map(col => (
+                    <div key={col}>{col}</div>
+                  ))}
+                </div>
 
-                    let cellBg = 'bg-slate-800 hover:bg-slate-700';
-                    if (shotStatus === 'tocado') cellBg = 'bg-rose-600 animate-pulse';
-                    else if (shotStatus === 'agua') cellBg = 'bg-cyan-900/60';
-                    else if (hasShip) cellBg = 'bg-cyan-500 border border-cyan-300';
+                {Array.from({ length: GRID_SIZE }).map((_, r) => (
+                  <div key={r} className="grid grid-cols-11 gap-0.5 items-center">
+                    <div className="font-mono text-[9px] font-bold text-cyan-500/80 text-center">
+                      {r + 1}
+                    </div>
 
-                    return (
-                      <div
-                        key={key}
-                        onClick={() => phase === 'setup' && handlePlaceShip(r, c)}
-                        className={`flex items-center justify-center rounded-xs text-[10px] font-black cursor-pointer transition-all ${cellBg}`}
-                      >
-                        {shotStatus === 'tocado' && '💥'}
-                        {shotStatus === 'agua' && '🌊'}
-                        {!shotStatus && hasShip && '🚢'}
-                      </div>
-                    );
-                  })
-                )}
+                    {Array.from({ length: GRID_SIZE }).map((_, c) => {
+                      const key = `${r},${c}`;
+                      const hasShip = userFleet[key];
+                      const shotStatus = botShots[key];
+
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => phase === 'setup' && handlePlaceShip(r, c)}
+                          className={`aspect-square rounded-xs text-[10px] font-black flex items-center justify-center cursor-pointer transition-all relative overflow-hidden ${
+                            shotStatus === 'tocado'
+                              ? 'bg-rose-950/90 border border-rose-500/80'
+                              : shotStatus === 'agua'
+                              ? 'bg-cyan-950/80 border border-cyan-800/60'
+                              : hasShip
+                              ? 'bg-indigo-900/90 border border-indigo-400/80 shadow-[0_0_8px_rgba(99,102,241,0.5)]'
+                              : 'bg-slate-900 hover:bg-slate-800 border border-slate-800/60'
+                          }`}
+                        >
+                          {shotStatus === 'tocado' ? (
+                            <ExplosionEffect className="w-4 h-4" />
+                          ) : shotStatus === 'agua' ? (
+                            <SplashEffect className="w-3.5 h-3.5" />
+                          ) : hasShip ? (
+                            <div className="w-2.5 h-2.5 rounded-xs bg-cyan-300 border border-white shadow-xs" />
+                          ) : (
+                            <div className="w-1 h-1 rounded-full bg-cyan-500/20" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
 
             {/* Bot Enemy Board */}
-            <div className="bg-slate-900 p-4 rounded-[28px] border-2 border-cyan-900 shadow-xl space-y-2">
+            <div className="bg-slate-900 p-4 rounded-[28px] border-2 border-cyan-900/60 shadow-xl space-y-2">
               <div className="flex justify-between items-center text-white text-xs font-bold px-1">
                 <span className="text-amber-300 flex items-center gap-1">
-                  🎯 Flota Enemiga ({selectedBot.name})
+                  <Crosshair size={14} className="text-rose-400 animate-spin" /> Flota Enemiga ({selectedBot.name})
                 </span>
                 <span className="text-slate-400 text-[10px]">
-                  {isUserTurn && phase === 'playing' ? '¡Tu Turno de Disparo!' : 'Esperando...'}
+                  {isUserTurn && phase === 'playing' ? '¡Tu Turno!' : 'Esperando...'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-10 grid-rows-10 gap-0.5 w-full aspect-square bg-slate-950 p-1 rounded-xl">
-                {Array.from({ length: GRID_SIZE }).map((_, r) =>
-                  Array.from({ length: GRID_SIZE }).map((_, c) => {
-                    const key = `${r},${c}`;
-                    const shotStatus = userShots[key];
+              {/* Grid with A-J and 1-10 labels */}
+              <div className="flex flex-col gap-1 bg-slate-950 p-2 rounded-xl">
+                <div className="grid grid-cols-11 gap-0.5 text-center font-mono text-[9px] font-bold text-cyan-500/80">
+                  <div />
+                  {['A','B','C','D','E','F','G','H','I','J'].map(col => (
+                    <div key={col}>{col}</div>
+                  ))}
+                </div>
 
-                    let cellBg = 'bg-slate-800 hover:bg-slate-700 cursor-pointer';
-                    if (shotStatus === 'tocado') cellBg = 'bg-rose-600';
-                    else if (shotStatus === 'agua') cellBg = 'bg-cyan-950';
+                {Array.from({ length: GRID_SIZE }).map((_, r) => (
+                  <div key={r} className="grid grid-cols-11 gap-0.5 items-center">
+                    <div className="font-mono text-[9px] font-bold text-cyan-500/80 text-center">
+                      {r + 1}
+                    </div>
 
-                    return (
-                      <div
-                        key={key}
-                        onClick={() => handleUserFire(r, c)}
-                        className={`flex items-center justify-center rounded-xs text-[10px] font-black transition-all ${cellBg}`}
-                      >
-                        {shotStatus === 'tocado' && '💥'}
-                        {shotStatus === 'agua' && '🌊'}
-                      </div>
-                    );
-                  })
-                )}
+                    {Array.from({ length: GRID_SIZE }).map((_, c) => {
+                      const key = `${r},${c}`;
+                      const shotStatus = userShots[key];
+
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => handleUserFire(r, c)}
+                          className={`aspect-square rounded-xs text-[10px] font-black flex items-center justify-center transition-all cursor-pointer relative overflow-hidden ${
+                            shotStatus === 'tocado'
+                              ? 'bg-rose-950/90 border border-rose-500/80'
+                              : shotStatus === 'agua'
+                              ? 'bg-cyan-950/80 border border-cyan-800/60'
+                              : 'bg-slate-900 hover:bg-cyan-950/90 border border-cyan-900/40 hover:border-cyan-400/60'
+                          }`}
+                        >
+                          {shotStatus === 'tocado' ? (
+                            <ExplosionEffect className="w-4 h-4" />
+                          ) : shotStatus === 'agua' ? (
+                            <SplashEffect className="w-3.5 h-3.5" />
+                          ) : (
+                            <div className="w-1 h-1 rounded-full bg-cyan-500/20" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
 

@@ -4,7 +4,8 @@ import { Usuario } from '../../types';
 import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import { Trophy, HelpCircle, RotateCcw, ArrowLeft, Sparkles, UserCheck } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import { ChessPieceSvg } from './ChessPieceIcons';
 
 interface ChessGameProps {
   partidaId: string;
@@ -14,11 +15,6 @@ interface ChessGameProps {
   onExit: () => void;
   onAwardPoints: (points: number) => void;
 }
-
-const PIECE_SYMBOLS: Record<string, string> = {
-  wP: '♙', wN: '♘', wB: '♗', wR: '♖', wQ: '♕', wK: '♔',
-  bP: '♟', bN: '♞', bB: '♝', bR: '♜', bQ: '♛', bK: '♚'
-};
 
 const KIDS_PIECE_EXPLANATIONS: Record<string, { name: string; desc: string }> = {
   p: { name: 'Peón', desc: 'Avanza 1 casilla hacia adelante (o 2 al inicio). Captura en diagonal.' },
@@ -36,6 +32,9 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
   const [showKidsHelp, setShowKidsHelp] = useState<boolean>(true);
   const [selectedPieceInfo, setSelectedPieceInfo] = useState<{ name: string; desc: string } | null>(null);
   const [localPartida, setLocalPartida] = useState<any>(partidaData);
+  const [lastCapture, setLastCapture] = useState<{ square: Square; color: 'w' | 'b'; type: 'p'|'n'|'b'|'r'|'q'|'k' } | null>(null);
+  const [capturedWhitePieces, setCapturedWhitePieces] = useState<('p'|'n'|'b'|'r'|'q')[]>([]);
+  const [capturedBlackPieces, setCapturedBlackPieces] = useState<('p'|'n'|'b'|'r'|'q')[]>([]);
 
   // Sync game state from Firestore
   useEffect(() => {
@@ -87,6 +86,8 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
 
       try {
         const gameCopy = new Chess(game.fen());
+        const targetPieceBefore = gameCopy.get(square);
+
         const move = gameCopy.move({
           from: selectedSquare,
           to: square,
@@ -94,6 +95,22 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
         });
 
         if (move) {
+          // If capture happened
+          if (targetPieceBefore) {
+            setLastCapture({
+              square,
+              color: targetPieceBefore.color,
+              type: targetPieceBefore.type as any
+            });
+            setTimeout(() => setLastCapture(null), 800);
+
+            if (targetPieceBefore.color === 'w') {
+              setCapturedWhitePieces(prev => [...prev, targetPieceBefore.type as any]);
+            } else {
+              setCapturedBlackPieces(prev => [...prev, targetPieceBefore.type as any]);
+            }
+          }
+
           // Valid move!
           const nextFen = gameCopy.fen();
           const nextTurnUid = isWhite ? blackPlayerUid : whitePlayerUid;
@@ -185,23 +202,43 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
 
       {/* Players Info Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
+        <div className={`p-4 rounded-2xl border flex flex-col gap-2 ${
           game.turn() === 'w' ? 'border-amber-400 bg-amber-50/50 shadow-md' : 'border-slate-100 bg-white'
         }`}>
-          <img className="w-10 h-10 rounded-full object-cover border border-slate-200" src={whitePlayer.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"} alt="Blancas" />
-          <div className="text-left overflow-hidden">
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400 block">Blancas ♔</span>
-            <span className="text-xs font-bold text-gray-900 truncate block">{whitePlayer.nombre}</span>
+          <div className="flex items-center gap-3">
+            <img className="w-10 h-10 rounded-full object-cover border border-slate-200" src={whitePlayer.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"} alt="Blancas" />
+            <div className="text-left overflow-hidden">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400 block">Blancas ♔</span>
+              <span className="text-xs font-bold text-gray-900 truncate block">{whitePlayer.nombre}</span>
+            </div>
+          </div>
+          {/* Captured black pieces */}
+          <div className="flex flex-wrap gap-1 min-h-[22px] items-center pt-1 border-t border-slate-100">
+            {capturedBlackPieces.map((pType, i) => (
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} key={i} className="w-5 h-5">
+                <ChessPieceSvg type={pType} color="b" />
+              </motion.div>
+            ))}
           </div>
         </div>
 
-        <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
+        <div className={`p-4 rounded-2xl border flex flex-col gap-2 ${
           game.turn() === 'b' ? 'border-amber-400 bg-amber-50/50 shadow-md' : 'border-slate-100 bg-white'
         }`}>
-          <img className="w-10 h-10 rounded-full object-cover border border-slate-200" src={blackPlayer.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"} alt="Negras" />
-          <div className="text-left overflow-hidden">
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400 block">Negras ♚</span>
-            <span className="text-xs font-bold text-gray-900 truncate block">{blackPlayer.nombre}</span>
+          <div className="flex items-center gap-3">
+            <img className="w-10 h-10 rounded-full object-cover border border-slate-200" src={blackPlayer.avatar_url || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"} alt="Negras" />
+            <div className="text-left overflow-hidden">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400 block">Negras ♚</span>
+              <span className="text-xs font-bold text-gray-900 truncate block">{blackPlayer.nombre}</span>
+            </div>
+          </div>
+          {/* Captured white pieces */}
+          <div className="flex flex-wrap gap-1 min-h-[22px] items-center pt-1 border-t border-slate-100">
+            {capturedWhitePieces.map((pType, i) => (
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} key={i} className="w-5 h-5">
+                <ChessPieceSvg type={pType} color="w" />
+              </motion.div>
+            ))}
           </div>
         </div>
       </div>
@@ -232,8 +269,8 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
       )}
 
       {/* Chess Board */}
-      <div className="bg-slate-800 p-3 md:p-4 rounded-3xl shadow-2xl max-w-md mx-auto aspect-square flex flex-col justify-between">
-        <div className="grid grid-cols-8 gap-0 border-2 border-slate-700 rounded-2xl overflow-hidden h-full">
+      <div className="bg-gradient-to-b from-slate-900 to-slate-800 p-3 md:p-5 rounded-3xl shadow-2xl max-w-md mx-auto aspect-square flex flex-col justify-between border border-slate-700/60">
+        <div className="grid grid-cols-8 gap-0 border-2 border-slate-700/80 rounded-2xl overflow-hidden h-full">
           {board.map((row, rowIndex) =>
             row.map((piece, colIndex) => {
               const file = String.fromCharCode(97 + colIndex);
@@ -243,26 +280,51 @@ export default function ChessGame({ partidaId, currentUser, usuarios, partidaDat
               const isLight = (rowIndex + colIndex) % 2 === 0;
               const isSelected = selectedSquare === square;
               const isPossible = possibleMoves.includes(square);
-
-              const pieceKey = piece ? `${piece.color}${piece.type.toUpperCase()}` : null;
-              const pieceSymbol = pieceKey ? PIECE_SYMBOLS[pieceKey] : '';
+              const isTargetEnemy = isPossible && piece !== null;
+              const isExploding = lastCapture?.square === square;
 
               return (
                 <button
                   key={square}
                   onClick={() => handleSquareClick(square)}
-                  className={`flex items-center justify-center text-3xl md:text-4xl select-none transition-all relative cursor-pointer ${
+                  className={`flex items-center justify-center select-none transition-colors relative cursor-pointer overflow-hidden ${
                     isLight ? 'bg-[#EEEED2]' : 'bg-[#769656]'
-                  } ${isSelected ? 'ring-4 ring-amber-400 ring-inset z-10' : ''}`}
+                  } ${isSelected ? 'bg-amber-300/60 ring-4 ring-amber-400 ring-inset z-10 shadow-[0_0_15px_rgba(251,191,36,0.6)]' : ''}`}
                 >
-                  {pieceSymbol && (
-                    <span className={`drop-shadow-sm transition-transform ${piece?.color === 'w' ? 'text-slate-100 font-extrabold' : 'text-slate-900 font-black'}`}>
-                      {pieceSymbol}
-                    </span>
+                  {/* Capture Burst FX */}
+                  <AnimatePresence>
+                    {isExploding && (
+                      <motion.div
+                        initial={{ scale: 0.5, opacity: 1 }}
+                        animate={{ scale: 2.2, opacity: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-amber-400/80 rounded-full z-20 pointer-events-none flex items-center justify-center"
+                      >
+                        <Sparkles className="text-white w-6 h-6 animate-spin" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Piece Vector SVG with Sliding Animation */}
+                  {piece && (
+                    <motion.div
+                      layout
+                      layoutId={`piece-${piece.color}-${piece.type}-${square}`}
+                      transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                      className="w-[82%] h-[82%] flex items-center justify-center z-10 p-0.5"
+                    >
+                      <ChessPieceSvg type={piece.type as any} color={piece.color} />
+                    </motion.div>
                   )}
 
-                  {isPossible && (
-                    <div className="absolute w-3.5 h-3.5 bg-amber-400 rounded-full opacity-80 animate-ping" />
+                  {/* Possible Move Soft Halo Ring Target */}
+                  {isPossible && !isTargetEnemy && (
+                    <div className="absolute w-5 h-5 rounded-full bg-amber-400/40 border-2 border-amber-400/90 animate-pulse shadow-[0_0_10px_rgba(251,191,36,0.6)] z-20" />
+                  )}
+
+                  {/* Enemy Capture Target Ring */}
+                  {isTargetEnemy && (
+                    <div className="absolute inset-0 rounded-lg border-4 border-rose-500 bg-rose-500/20 animate-pulse z-20" />
                   )}
                 </button>
               );

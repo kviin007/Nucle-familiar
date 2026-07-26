@@ -7,9 +7,10 @@ interface AdminPanelDashboardProps {
   tareas: TareaDiaria[];
   metas?: Meta[];
   onSelectUser: (userId: string) => void;
+  onOpenGeminiAdvisor?: () => void;
 }
 
-export default function AdminPanelDashboard({ usuarios, familias, tareas, metas = [], onSelectUser }: AdminPanelDashboardProps) {
+export default function AdminPanelDashboard({ usuarios, familias, tareas, metas = [], onSelectUser, onOpenGeminiAdvisor }: AdminPanelDashboardProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [exported, setExported] = useState<boolean>(false);
 
@@ -129,20 +130,33 @@ export default function AdminPanelDashboard({ usuarios, familias, tareas, metas 
           <p className="font-sans text-xs text-indigo-100 mt-1">Visión unificada y analíticas de la red real en tiempo real.</p>
         </div>
 
-        {/* Export JSON Button */}
-        <button
-          onClick={handleExportWeeklySummaryJSON}
-          className={`px-5 py-2.5 rounded-2xl font-sans text-xs font-bold border flex items-center gap-2 shadow-sm transition-all active:scale-95 ${
-            exported
-              ? 'bg-emerald-500 text-white border-emerald-400'
-              : 'bg-white text-brand-primary hover:bg-slate-50 border-white/20'
-          }`}
-        >
-          <span className="material-symbols-outlined text-base font-bold">
-            {exported ? 'check_circle' : 'download'}
-          </span>
-          <span>{exported ? '¡Resumen Exportado!' : 'Exportar Resumen Semanal (JSON)'}</span>
-        </button>
+        {/* Actions group */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {onOpenGeminiAdvisor && (
+            <button
+              onClick={onOpenGeminiAdvisor}
+              className="px-4 py-2.5 rounded-2xl font-sans text-xs font-bold bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 text-slate-900 shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-amber-300"
+            >
+              <span className="material-symbols-outlined text-base font-bold text-slate-900">auto_awesome</span>
+              <span>Asistente Gemini IA (General)</span>
+            </button>
+          )}
+
+          {/* Export JSON Button */}
+          <button
+            onClick={handleExportWeeklySummaryJSON}
+            className={`px-4 py-2.5 rounded-2xl font-sans text-xs font-bold border flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer ${
+              exported
+                ? 'bg-emerald-500 text-white border-emerald-400'
+                : 'bg-white text-brand-primary hover:bg-slate-50 border-white/20'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base font-bold">
+              {exported ? 'check_circle' : 'download'}
+            </span>
+            <span>{exported ? '¡Resumen Exportado!' : 'Exportar Resumen (JSON)'}</span>
+          </button>
+        </div>
       </section>
 
       {/* Summary Cards */}

@@ -11,7 +11,8 @@ import {
   Volume2, 
   CheckCircle2, 
   Users,
-  Award
+  Award,
+  Star
 } from 'lucide-react';
 import { Usuario, DesbloqueoUsuario } from '../../types';
 import { BOTS, BotPersonality, isBotUnlocked } from '../../data/gameBots';
@@ -30,6 +31,14 @@ interface BotCardState {
   marked: boolean[][];
   hasBingo: boolean;
 }
+
+const COLUMN_CONFIG = [
+  { letter: 'B', headerBg: 'bg-gradient-to-b from-rose-500 to-orange-500', circleBg: 'bg-gradient-to-br from-rose-500 to-orange-600 border-rose-300' },
+  { letter: 'I', headerBg: 'bg-gradient-to-b from-sky-400 to-cyan-500', circleBg: 'bg-gradient-to-br from-sky-400 to-cyan-600 border-sky-300' },
+  { letter: 'N', headerBg: 'bg-gradient-to-b from-emerald-500 to-teal-500', circleBg: 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-300' },
+  { letter: 'G', headerBg: 'bg-gradient-to-b from-blue-500 to-indigo-600', circleBg: 'bg-gradient-to-br from-blue-500 to-indigo-700 border-blue-300' },
+  { letter: 'O', headerBg: 'bg-gradient-to-b from-purple-500 to-fuchsia-600', circleBg: 'bg-gradient-to-br from-purple-500 to-fuchsia-700 border-purple-300' },
+];
 
 const RANGES = [
   [1, 15],   // B
@@ -109,6 +118,17 @@ export default function BingoVsAiGame({ currentUser, desbloqueosUsuarios = [], o
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [winner, setWinner] = useState<string | null>(null);
+  const [animBall, setAnimBall] = useState<number | null>(null);
+
+  const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
+
+  useEffect(() => {
+    if (lastCalledNumber) {
+      setAnimBall(lastCalledNumber);
+      const timer = setTimeout(() => setAnimBall(null), 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [lastCalledNumber]);
 
   // User card state
   const [userCard, setUserCard] = useState<number[][]>([]);
@@ -242,8 +262,6 @@ export default function BingoVsAiGame({ currentUser, desbloqueosUsuarios = [], o
     }
   };
 
-  const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
-
   const getLetterForNumber = (num: number) => {
     if (num <= 15) return 'B';
     if (num <= 30) return 'I';
@@ -307,6 +325,39 @@ export default function BingoVsAiGame({ currentUser, desbloqueosUsuarios = [], o
           })}
         </div>
       </div>
+
+      {/* Falling Ball Animation Overlay */}
+      <AnimatePresence>
+        {animBall && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs pointer-events-none"
+          >
+            <motion.div
+              initial={{ y: -200, scale: 0.2, rotate: -180, opacity: 0 }}
+              animate={{ y: 0, scale: 1, rotate: 0, opacity: 1 }}
+              exit={{ scale: 0.2, opacity: 0, transition: { duration: 0.3 } }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              className="flex flex-col items-center justify-center gap-2"
+            >
+              <div className="w-36 h-36 md:w-44 md:h-44 rounded-full bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 border-4 border-white shadow-[0_0_50px_rgba(251,191,36,0.8)] flex flex-col items-center justify-center text-slate-950 font-black relative overflow-hidden">
+                <div className="absolute inset-2 rounded-full border-2 border-white/50 pointer-events-none" />
+                <span className="text-xl md:text-2xl tracking-widest text-slate-900/80 uppercase font-black">
+                  {getLetterForNumber(animBall)}
+                </span>
+                <span className="text-5xl md:text-6xl font-black drop-shadow">
+                  {animBall}
+                </span>
+              </div>
+              <span className="text-white font-extrabold text-base tracking-wider bg-slate-900/80 px-4 py-1.5 rounded-full border border-white/20 shadow">
+                ¡NUEVA BALOTA CANTADA!
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Grid: Ball Announcer + User Card + Bots Progress */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -427,9 +478,9 @@ export default function BingoVsAiGame({ currentUser, desbloqueosUsuarios = [], o
 
             {/* 5x5 Grid Table */}
             <div className="grid grid-cols-5 gap-2 max-w-md mx-auto">
-              {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => (
-                <div key={idx} className="bg-emerald-600 text-white font-black text-base py-2 rounded-xl text-center shadow-xs">
-                  {letter}
+              {COLUMN_CONFIG.map((col, idx) => (
+                <div key={col.letter} className={`${col.headerBg} text-white font-black text-base py-2.5 rounded-xl text-center shadow-xs tracking-wider`}>
+                  {col.letter}
                 </div>
               ))}
 
@@ -438,19 +489,35 @@ export default function BingoVsAiGame({ currentUser, desbloqueosUsuarios = [], o
                   const isFree = rIdx === 2 && cIdx === 2;
                   const isMarked = userMarked[rIdx]?.[cIdx];
                   const isCalled = calledNumbers.includes(val);
-
-                  let cellBg = 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200';
-                  if (isMarked) cellBg = 'bg-emerald-500 text-white font-black border-emerald-600 shadow-md scale-105';
-                  else if (isCalled && !isFree) cellBg = 'bg-amber-100 text-amber-900 font-extrabold border-amber-300 animate-pulse';
+                  const colCfg = COLUMN_CONFIG[cIdx];
 
                   return (
                     <button
                       key={`${rIdx}-${cIdx}`}
                       onClick={() => handleUserCellClick(rIdx, cIdx)}
-                      className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center transition-all cursor-pointer font-extrabold text-sm sm:text-base ${cellBg}`}
+                      className={`aspect-square rounded-2xl border-2 flex items-center justify-center transition-all cursor-pointer font-extrabold text-sm sm:text-base relative overflow-hidden ${
+                        isFree
+                          ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-sm'
+                          : isMarked
+                          ? 'bg-slate-900 border-slate-800 shadow-md scale-95'
+                          : isCalled
+                          ? 'bg-amber-50 border-amber-300 text-amber-900 font-extrabold animate-pulse'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
                     >
                       {isFree ? (
-                        <span className="text-xs font-black text-emerald-700">LIBRE</span>
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <Star size={18} className="text-amber-500 fill-amber-400 drop-shadow-xs" />
+                          <span className="text-[9px] font-black text-amber-800 tracking-tighter">LIBRE</span>
+                        </div>
+                      ) : isMarked ? (
+                        <motion.div
+                          initial={{ scale: 0.3 }}
+                          animate={{ scale: 1 }}
+                          className={`w-full h-full rounded-xl ${colCfg.circleBg} text-white font-black text-sm sm:text-base flex items-center justify-center shadow-inner border`}
+                        >
+                          {val}
+                        </motion.div>
                       ) : (
                         <span>{val}</span>
                       )}

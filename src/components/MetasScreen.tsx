@@ -13,6 +13,7 @@ interface MetasScreenProps {
   onCreateRewardTemplate?: (template: Partial<RecompensaPlantilla>) => Promise<void>;
   onResolvePendingConsequence?: (pendiente_id: string, action: 'assign' | 'forgive') => Promise<void>;
   onEvaluateCompliance?: () => void;
+  onOpenGeminiAdvisorWithPrompt?: (promptText: string) => void;
 }
 
 const DAYS_OF_WEEK = [
@@ -130,7 +131,8 @@ export default function MetasScreen({
   onCreateConsequenceTemplate,
   onCreateRewardTemplate,
   onResolvePendingConsequence,
-  onEvaluateCompliance
+  onEvaluateCompliance,
+  onOpenGeminiAdvisorWithPrompt
 }: MetasScreenProps) {
   // Main Tab
   const [activeTab, setActiveTab] = useState<'individual' | 'familiar'>('individual');
@@ -828,7 +830,29 @@ export default function MetasScreen({
 
               {/* Title & Category */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Título de la Meta</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Título de la Meta</label>
+                  {onOpenGeminiAdvisorWithPrompt && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const promptText = `Por favor ayúdame a sugerir y estructurar una meta alcanzable con frecuencia razonable y duración adecuada.
+Contexto actual que he escrito:
+- Categoría: ${categoria}
+- Título o borrador: ${titulo.trim() || 'Aún no especificado'}
+- Frecuencia propuesta: ${frecuenciaObjetivo} veces por ${unidadFrecuencia}
+- Duración sugerida: ${duracionValor} ${duracionUnidad}
+
+Proporciona recomendaciones prácticas sobre si esta frecuencia es equilibrada, ideas para mejorar la redacción del título y consejos para no abandonar la meta.`;
+                        onOpenGeminiAdvisorWithPrompt(promptText);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-indigo-600 text-white rounded-full text-[10px] font-extrabold shadow-xs hover:opacity-95 transition-all cursor-pointer active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-[13px] text-amber-200">auto_awesome</span>
+                      <span>✨ Sugerir con IA</span>
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   required
