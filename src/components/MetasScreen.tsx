@@ -396,44 +396,44 @@ export default function MetasScreen({
           <h2 className="font-sans text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">
             Metas del Núcleo Familiar
           </h2>
-          <p className="font-sans text-sm text-gray-500">
+          <p className="font-sans text-sm text-gray-500 max-w-xl">
             Crea metas individuales y familiares con hábitos medibles y consecuencias constructivas.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           {onEvaluateCompliance && (
             <button
               onClick={() => onEvaluateCompliance()}
-              className="bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 px-3.5 py-2.5 rounded-full font-sans text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+              className="bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 px-4 py-2.5 rounded-2xl font-sans text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 whitespace-nowrap cursor-pointer shadow-xs"
               title="Evaluar cumplimiento semanal de metas"
             >
               <span className="material-symbols-outlined text-base">fact_check</span>
-              Evaluar Cumplimiento
+              <span>Evaluar Cumplimiento</span>
             </button>
           )}
           <button
             onClick={handleGenerateAiGoals}
             disabled={aiLoading}
-            className="bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-full font-sans text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50"
+            className="bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-2xl font-sans text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap cursor-pointer"
           >
             {aiLoading ? (
               <>
                 <span className="material-symbols-outlined animate-spin text-base">sync</span>
-                Generando...
+                <span>Generando...</span>
               </>
             ) : (
               <>
                 <span className="material-symbols-outlined text-amber-500 text-base">auto_awesome</span>
-                Sugerir con Gemini IA
+                <span>Sugerir con Gemini IA</span>
               </>
             )}
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="bg-brand-primary text-white px-5 py-2.5 rounded-full font-sans text-sm font-bold flex items-center justify-center gap-1.5 shadow-md hover:bg-brand-dark transition-all active:scale-95"
+            className="bg-brand-primary text-white px-5 py-2.5 rounded-2xl font-sans text-xs font-bold flex items-center justify-center gap-1.5 shadow-md hover:bg-brand-dark transition-all active:scale-95 whitespace-nowrap cursor-pointer"
           >
             <span className="material-symbols-outlined text-lg">add</span>
-            Nueva Meta
+            <span>Nueva Meta</span>
           </button>
         </div>
       </div>

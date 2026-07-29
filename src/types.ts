@@ -5,6 +5,8 @@ export interface Usuario {
   familia_id: string;
   racha_actual: number;
   puntos: number;
+  email?: string;
+  role?: string;
   estado?: 'activo' | 'suspendido';
   configuracion_privacidad: {
     visible_familia_por_defecto: boolean;
@@ -60,6 +62,8 @@ export interface Meta {
   fecha_limite?: string;               // compatibilidad con campos previos
   porcentaje_semanal: number;          // % del periodo actual
   visible_familia: boolean;
+  frecuencia?: string;
+  puntos_recompensa?: number;
 }
 
 export interface ConfigTareaCritica {
@@ -86,6 +90,7 @@ export interface TareaDiaria {
   origen?: 'manual' | 'meta_automatica' | 'consecuencia' | 'admin_asignada';
   ultima_actualizacion: string; // ISO string
   visible_familia: boolean;
+  puntos?: number;
 }
 
 export interface ConsecuenciaPlantilla {
@@ -199,12 +204,12 @@ export type ViewType =
   | 'onboarding'
   | 'login'
   | 'hoy'
+  | 'tareas'
   | 'metas'
   | 'familia'
   | 'diario'
   | 'ideas'
   | 'widgets'
-  | 'juegos'
   | 'perfil'
   | 'admin-dashboard'
   | 'admin-families'

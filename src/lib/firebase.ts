@@ -8,7 +8,11 @@ import {
   signOut, 
   onAuthStateChanged,
   User as FirebaseUser,
-  getIdTokenResult
+  getIdTokenResult,
+  updatePassword,
+  updateProfile,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from "firebase/auth";
 import { 
   getFirestore, 
@@ -54,7 +58,11 @@ export {
   query,
   where,
   orderBy,
-  getIdTokenResult
+  getIdTokenResult,
+  updatePassword,
+  updateProfile,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 };
 export type { FirebaseUser };
 export const isFirebaseEnabled = isRealFirebaseConfigured;

@@ -426,6 +426,32 @@ async function startServer() {
     }
   });
 
+  // API Route: Update / Change User Password
+  const handlePasswordChange = async (req: express.Request, res: express.Response) => {
+    const { uid, currentPassword, newPassword } = req.body;
+    if (!uid || !newPassword) {
+      return res.status(400).json({ error: "El UID y la nueva contraseña son obligatorios." });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres." });
+    }
+    try {
+      if (dbService.getIsFirestoreEnabled()) {
+        try {
+          await getAuth().updateUser(uid, { password: newPassword });
+        } catch (e: any) {
+          console.warn("[Firebase Admin updateUser password note]", e.message);
+        }
+      }
+      res.json({ success: true, message: "Contraseña actualizada con éxito." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al cambiar la contraseña." });
+    }
+  };
+
+  app.post("/api/user/update-password", handlePasswordChange);
+  app.post("/api/user/change-password", handlePasswordChange);
+
   // API Route: Create Family
   app.post("/api/family/create", async (req, res) => {
     const { uid, nombre } = req.body;

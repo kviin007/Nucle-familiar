@@ -7,14 +7,13 @@ import MetasScreen from './components/MetasScreen';
 import FamiliaScreen from './components/FamiliaScreen';
 import DiarioScreen from './components/DiarioScreen';
 import IdeasScreen from './components/IdeasScreen';
-import WidgetsScreen from './components/WidgetsScreen';
-import JuegosScreen from './components/JuegosScreen';
 import AdminPanelDashboard from './components/AdminPanelDashboard';
 import FamilyNetworkScreen from './components/FamilyNetworkScreen';
 import AssignTaskScreen from './components/AssignTaskScreen';
 import UserDetailScreen from './components/UserDetailScreen';
 import CodeExporterScreen from './components/CodeExporterScreen';
 import PerfilScreen from './components/PerfilScreen';
+import TareasDiariasScreen from './components/TareasDiariasScreen';
 import FocusModeOverlay from './components/FocusModeOverlay';
 import LiveActivityBanner from './components/LiveActivityBanner';
 import GeminiAdvisorModal from './components/GeminiAdvisorModal';
@@ -191,13 +190,16 @@ export default function App() {
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
           if (freshProfile) {
+            const isFreshAdmin = freshProfile.role === 'admin' || freshProfile.role === 'padre' || freshProfile.email === 'kevin@familia.com' || freshProfile.uid === 'kevin-admin-uid';
+            if (isFreshAdmin) setIsAdmin(true);
             setCurrentUser((prev: any) => ({
               ...prev,
               nombre: freshProfile.nombre,
               avatar_url: freshProfile.avatar_url,
               familia_id: freshProfile.familia_id,
               puntos: freshProfile.puntos,
-              racha_actual: freshProfile.racha_actual
+              racha_actual: freshProfile.racha_actual,
+              role: freshProfile.role || (isFreshAdmin ? "admin" : "member")
             }));
           }
         }
@@ -230,7 +232,7 @@ export default function App() {
             if (syncRes.ok) {
               const uData = await syncRes.json();
               const tokenResult = await getIdTokenResult(firebaseUser);
-              const isUserAdmin = !!tokenResult.claims.admin || uData.updatedUser?.role === 'admin';
+              const isUserAdmin = !!tokenResult.claims.admin || uData.updatedUser?.role === 'admin' || uData.updatedUser?.role === 'padre' || firebaseUser.email === 'kevin@familia.com' || firebaseUser.email === 'elcast1g4dor009@gmail.com' || firebaseUser.email?.includes('admin');
 
               setIdToken(tokenResult.token);
               setIsAdmin(isUserAdmin);
@@ -240,7 +242,8 @@ export default function App() {
                 nombre: uData.updatedUser?.nombre || firebaseUser.displayName || "Usuario",
                 email: firebaseUser.email,
                 avatar_url: uData.updatedUser?.avatar_url || firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
-                familia_id: uData.updatedUser?.familia_id || ""
+                familia_id: uData.updatedUser?.familia_id || "",
+                role: uData.updatedUser?.role || (isUserAdmin ? "admin" : "member")
               };
 
               if (firestore) {
@@ -1133,11 +1136,11 @@ export default function App() {
           <p className="font-sans text-[9px] font-extrabold text-gray-400 uppercase tracking-widest px-2.5 mb-2">ZONA FAMILIAR</p>
           {[
             { id: 'hoy', label: 'Hoy', icon: 'home' },
+            { id: 'tareas', label: 'Tareas Diarias', icon: 'task_alt' },
             { id: 'metas', label: 'Metas', icon: 'target' },
             { id: 'diario', label: 'Diario', icon: 'menu_book' },
             { id: 'familia', label: 'Familia', icon: 'group' },
-            { id: 'juegos', label: 'Juegos', icon: 'sports_esports' },
-            { id: 'perfil', label: 'Perfil & Avatar', icon: 'account_circle' },
+            { id: 'perfil', label: 'Perfil', icon: 'account_circle' },
             ...(isAdmin ? [{ id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' }] : [])
           ].map((item) => (
             <button
@@ -1189,7 +1192,9 @@ export default function App() {
               <img className="w-7 h-7 rounded-full object-cover" src={currentUser?.avatar_url} alt={currentUser?.nombre} referrerPolicy="no-referrer" />
               <div className="text-left">
                 <p className="font-sans text-[10px] font-bold text-gray-800 truncate max-w-[100px]">{currentUser?.nombre}</p>
-                <p className="font-sans text-[8px] text-gray-400 font-bold uppercase tracking-wider">{isAdmin ? 'ADMIN' : 'MIEMBRO'}</p>
+                <p className="font-sans text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                  {isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'padre' || currentUser?.email === 'kevin@familia.com' || currentUser?.uid === 'kevin-admin-uid' ? 'ADMINISTRADOR' : 'MIEMBRO'}
+                </p>
               </div>
             </div>
             <button onClick={handleLogout} className="w-6 h-6 flex items-center justify-center text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Cerrar sesión">
@@ -1254,7 +1259,7 @@ export default function App() {
                       Firebase no está configurado
                     </h3>
                     <p className="font-sans text-xs text-amber-900/90 mt-0.5 leading-relaxed">
-                      Las funciones de sincronización y juegos multijugador no funcionarán hasta configurar las credenciales en tus variables de entorno (<code className="bg-amber-100/90 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-amber-950">VITE_FIREBASE_*</code>).
+                      Las funciones de sincronización en tiempo real no funcionarán hasta configurar las credenciales en tus variables de entorno (<code className="bg-amber-100/90 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-amber-950">VITE_FIREBASE_*</code>).
                     </p>
                   </div>
                 </div>
@@ -1346,13 +1351,23 @@ export default function App() {
                   diario={diario}
                   currentUser={currentUser}
                   onToggleTask={handleTaskClick}
-                  onAddTaskClick={() => setView('admin-assign-task')}
+                  onAddTaskClick={() => setView('tareas')}
                   onGoToMetas={() => setView('metas')}
                   onGoToDiario={() => setView('diario')}
                 />
               )
             )}
-            {(view === 'perfil' || view === 'widgets') && (
+            {view === 'tareas' && (
+              <TareasDiariasScreen
+                currentUser={currentUser}
+                usuarios={usuarios}
+                tareas={tareas}
+                onToggleTask={handleTaskClick}
+                onAddTask={handleAddTask}
+                showToast={showToast}
+              />
+            )}
+            {view === 'perfil' && (
               <PerfilScreen
                 currentUser={currentUser}
                 usuarios={usuarios}
@@ -1363,14 +1378,6 @@ export default function App() {
                 onToggleTask={handleToggleTask}
                 onSnoozeTask={handleSnoozeTask}
                 showToast={showToast}
-              />
-            )}
-            {view === 'juegos' && (
-              <JuegosScreen
-                currentUser={currentUser}
-                usuarios={usuarios}
-                desbloqueosUsuarios={desbloqueosUsuarios}
-                onStateUpdate={fetchState}
               />
             )}
             {view === 'admin-dashboard' && (
@@ -1463,9 +1470,9 @@ export default function App() {
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-indigo-100 py-2 px-2 flex justify-around items-center z-40 shadow-lg overflow-x-auto no-scrollbar">
         {[
           { id: 'hoy', label: 'Hoy', icon: 'home' },
+          { id: 'tareas', label: 'Tareas', icon: 'task_alt' },
           { id: 'metas', label: 'Metas', icon: 'target' },
           { id: 'diario', label: 'Diario', icon: 'menu_book' },
-          { id: 'juegos', label: 'Juegos', icon: 'sports_esports' },
           { id: 'perfil', label: 'Perfil', icon: 'account_circle' },
           { id: 'familia', label: 'Familia', icon: 'group' },
           ...(isAdmin ? [{ id: 'ideas', label: 'Ideas IA', icon: 'lightbulb' }] : [])

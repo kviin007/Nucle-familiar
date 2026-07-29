@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Usuario, TareaDiaria, Familia } from '../types';
-import WidgetsScreen from './WidgetsScreen';
 import CodeExporterScreen from './CodeExporterScreen';
-import { Sparkles, User, Shield, Award, Flame, Code, Palette, Camera, CheckCircle2, Upload } from 'lucide-react';
+import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff } from 'lucide-react';
+import { auth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from '../lib/firebase';
 
 interface PerfilScreenProps {
   currentUser: Usuario | null;
@@ -27,11 +27,19 @@ export default function PerfilScreen({
   onSnoozeTask,
   showToast
 }: PerfilScreenProps) {
-  const [activeTab, setActiveTab] = useState<'perfil' | 'widgets' | 'codigo'>('perfil');
+  const [activeTab, setActiveTab] = useState<'perfil' | 'codigo'>('perfil');
   const [avatarUrl, setAvatarUrl] = useState<string>(currentUser?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop');
   const [nombre, setNombre] = useState<string>(currentUser?.nombre || '');
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [isSavingPass, setIsSavingPass] = useState(false);
 
   const activeFamily = familias.find(f => f.familia_id === currentUser?.familia_id);
   const userTasks = (tareas || []).filter(t => t.usuario_id === currentUser?.uid);
@@ -55,20 +63,94 @@ export default function PerfilScreen({
     }
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!currentUser) return;
-    setIsSaving(true);
+    
+    const trimmedNombre = nombre.trim();
+    if (!trimmedNombre) {
+      showToast("El nombre no puede estar vacío.", "error");
+      return;
+    }
+    if (trimmedNombre.length > 30) {
+      showToast("El nombre no puede exceder los 30 caracteres (máximo 30).", "error");
+      return;
+    }
+
+    setIsSavingProfile(true);
     try {
       await onUpdateUser({
-        nombre: nombre.trim() || currentUser.nombre,
+        nombre: trimmedNombre,
         avatar_url: avatarUrl.trim() || currentUser.avatar_url
       });
-      showToast("¡Perfil actualizado con éxito! 🎉", "success");
+      showToast("¡Nombre y perfil actualizados con éxito! 🎉", "success");
     } catch (e) {
       console.error("Error updating profile:", e);
       showToast("Error al guardar el perfil.", "error");
     } finally {
-      setIsSaving(false);
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser?.uid) return;
+
+    if (!newPassword.trim()) {
+      showToast("Ingresa la nueva contraseña.", "error");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showToast("La contraseña debe tener al menos 6 caracteres.", "error");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showToast("Las contraseñas no coinciden.", "error");
+      return;
+    }
+
+    setIsSavingPass(true);
+    try {
+      // 1. If Firebase Auth user is active, attempt update via Firebase Auth
+      if (auth?.currentUser) {
+        try {
+          await updatePassword(auth.currentUser, newPassword);
+        } catch (authErr: any) {
+          if (authErr.code === 'auth/requires-recent-login' && currentPassword && auth.currentUser.email) {
+            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+            await reauthenticateWithCredential(auth.currentUser, credential);
+            await updatePassword(auth.currentUser, newPassword);
+          }
+        }
+      }
+
+      // 2. Call backend endpoint to handle persistent or simulated password update
+      const res = await fetch('/api/user/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          currentPassword,
+          newPassword
+        })
+      });
+
+      if (res.ok) {
+        showToast("¡Contraseña actualizada con éxito! 🔒", "success");
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        const data = await res.json();
+        showToast(data.error || "No se pudo actualizar la contraseña.", "error");
+      }
+    } catch (err: any) {
+      console.error("Error changing password:", err);
+      showToast(err.message || "Error al actualizar la contraseña.", "error");
+    } finally {
+      setIsSavingPass(false);
     }
   };
 
@@ -87,20 +169,7 @@ export default function PerfilScreen({
             }`}
           >
             <User size={16} />
-            <span>Mi Perfil</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('widgets')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all cursor-pointer ${
-              activeTab === 'widgets'
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Palette size={16} />
-            <span>Mis Widgets & Temas</span>
+            <span>Perfil</span>
           </button>
 
           {/* CODE EXPORTER - ONLY FOR ADMIN */}
@@ -165,18 +234,21 @@ export default function PerfilScreen({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="absolute bottom-1 right-1 bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg border-2 border-slate-900 transition-transform hover:scale-110 cursor-pointer"
-                  title="Subir foto"
+                  title="Cambiar foto de perfil"
                 >
                   <Camera size={16} />
                 </button>
               </div>
 
-              {/* User Name & Level */}
+              {/* User Name & Family */}
               <h3 className="text-xl font-extrabold text-white mt-2">
                 {nombre || currentUser?.nombre || 'Miembro Familiar'}
               </h3>
-              <p className="text-xs text-indigo-300 font-medium">
-                Familia: {activeFamily?.nombre || 'Núcleo Familiar'}
+              <p className="text-xs text-indigo-300 font-medium mt-0.5">
+                {currentUser?.email || 'email@familia.com'}
+              </p>
+              <p className="text-xs text-indigo-200/80 font-medium mt-1">
+                Familia: <span className="font-bold text-amber-300">{activeFamily?.nombre || 'Núcleo Familiar'}</span>
               </p>
 
               {/* Metrics */}
@@ -203,102 +275,187 @@ export default function PerfilScreen({
             </div>
           </div>
 
-          {/* Right Column: Name & Photo Controls */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div>
-              <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <User size={20} className="text-indigo-600" />
-                Editar Perfil
-              </h3>
-              <p className="text-xs text-slate-500">
-                Actualiza tu nombre de usuario y tu foto de perfil.
-              </p>
-            </div>
+          {/* Right Column: Edit Profile Name & Change Password Forms */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* CARD 1: Edit Profile Name & Avatar */}
+            <form onSubmit={handleSaveProfile} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <User size={20} className="text-indigo-600" />
+                  Cambiar Nombre y Foto
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Modifica tu nombre visible en la familia y actualiza tu foto de perfil.
+                </p>
+              </div>
 
-            {/* Edit Name */}
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-2">
-                Nombre de Usuario
-              </label>
-              <input
-                type="text"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ingresa tu nombre..."
-                className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500 transition-all"
-              />
-            </div>
+              {/* Cambiar Nombre */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase">
+                    Nombre de Usuario
+                  </label>
+                  <span className={`text-[10px] font-bold ${nombre.trim().length > 30 ? 'text-rose-600 font-extrabold' : 'text-slate-400'}`}>
+                    {nombre.length}/30 caracteres
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={nombre}
+                  maxLength={35}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Ingresa tu nombre (máx 30 caracteres)..."
+                  className={`w-full bg-slate-50 border rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none transition-all ${
+                    !nombre.trim() || nombre.trim().length > 30
+                      ? 'border-rose-300 focus:border-rose-500 bg-rose-50/20'
+                      : 'border-slate-300 focus:border-indigo-500'
+                  }`}
+                />
 
-            {/* Upload Profile Photo */}
-            <div className="space-y-3">
-              <label className="block text-xs font-extrabold text-slate-700 uppercase">
-                Foto de Perfil
-              </label>
+                {/* Real-time Error Visual Message */}
+                {!nombre.trim() && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <span className="text-rose-500 font-black">⚠️</span>
+                    <span>El nombre no puede estar vacío.</span>
+                  </div>
+                )}
+                {nombre.trim().length > 30 && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <span className="text-rose-500 font-black">⚠️</span>
+                    <span>El nombre no puede superar los 30 caracteres.</span>
+                  </div>
+                )}
+              </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-              />
+              {/* Upload Profile Photo */}
+              <div className="space-y-2">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase">
+                  Foto de Perfil
+                </label>
 
-              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer font-bold text-xs"
+                  className="w-full bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer font-bold text-xs"
                 >
-                  <Upload size={24} className="text-indigo-600" />
-                  <span>Subir foto desde mi dispositivo</span>
-                  <span className="text-[10px] text-slate-500 font-normal">Soporta JPG, PNG, WEBP</span>
+                  <Upload size={22} className="text-indigo-600" />
+                  <span>Subir foto desde tu dispositivo</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Formatos soportados: JPG, PNG, WEBP</span>
                 </button>
               </div>
 
+              {/* Save Button */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile || !nombre.trim() || nombre.trim().length > 30}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm py-3.5 rounded-2xl shadow-lg border-b-4 border-indigo-900 active:translate-y-1 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-indigo-600 disabled:hover:to-purple-600"
+                >
+                  <Sparkles size={18} />
+                  <span>{isSavingProfile ? 'Guardando...' : 'Guardar Nombre y Foto'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* CARD 2: Cambiar Contraseña */}
+            <form onSubmit={handleChangePassword} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                  O pega una URL de imagen
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <Lock size={20} className="text-indigo-600" />
+                  Cambiar Contraseña
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Actualiza tu contraseña para mantener tu cuenta familiar protegida.
+                </p>
+              </div>
+
+              {/* Contraseña Actual */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">
+                  Contraseña Actual
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPass ? 'text' : 'password'}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Escribe tu contraseña actual..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-4 pr-11 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(!showCurrentPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showCurrentPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Nueva Contraseña */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">
+                  Nueva Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPass ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl pl-4 pr-11 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirmar Nueva Contraseña */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">
+                  Confirmar Nueva Contraseña
                 </label>
                 <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://ejemplo.com/mi-foto.jpg"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repite tu nueva contraseña..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500 transition-all"
                 />
               </div>
-            </div>
 
-            {/* Save Button */}
-            <div className="pt-4">
-              <button
-                type="button"
-                onClick={handleSaveProfile}
-                disabled={isSaving}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm py-3.5 rounded-2xl shadow-lg border-b-4 border-indigo-900 active:translate-y-1 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Sparkles size={18} />
-                <span>{isSaving ? 'Guardando...' : 'Guardar Cambios de Perfil'}</span>
-              </button>
-            </div>
+              {/* Submit Password Button */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingPass}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-sm py-3.5 rounded-2xl shadow-md border-b-4 border-slate-950 active:translate-y-1 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Key size={18} className="text-amber-400" />
+                  <span>{isSavingPass ? 'Actualizando...' : 'Actualizar Contraseña'}</span>
+                </button>
+              </div>
+            </form>
+
           </div>
         </div>
       )}
 
-      {/* TAB 2: WIDGETS INTEGRATION */}
-      {activeTab === 'widgets' && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <WidgetsScreen
-            currentUser={currentUser}
-            tareas={tareas}
-            onToggleTask={onToggleTask}
-            onSnoozeTask={onSnoozeTask}
-            showToast={showToast}
-          />
-        </div>
-      )}
-
-      {/* TAB 3: DEVELOPER CODE EXPORTER (RESTRICTED TO ADMIN ONLY) */}
+      {/* TAB 2: DEVELOPER CODE EXPORTER (RESTRICTED TO ADMIN ONLY) */}
       {activeTab === 'codigo' && isAdmin && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <CodeExporterScreen />
