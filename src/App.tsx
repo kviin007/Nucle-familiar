@@ -26,6 +26,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged,
   getIdTokenResult,
@@ -86,10 +87,11 @@ export default function App() {
   const [idToken, setIdToken] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
-  // Email and password login states
-  const [loginMethod, setLoginMethod] = useState<'google' | 'email'>('email');
-  const [loginEmail, setLoginEmail] = useState<string>('kevin@familia.com');
-  const [loginPassword, setLoginPassword] = useState<string>('123456');
+  // Real Firebase Auth Email/Password login state
+  const [loginMethod, setLoginMethod] = useState<'google' | 'email'>('google');
+  const [loginMode, setLoginMode] = useState<'login' | 'register'>('login');
+  const [loginEmail, setLoginEmail] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
 
   // Real-time Firestore Listeners (onSnapshot)
   useEffect(() => {
@@ -678,113 +680,53 @@ export default function App() {
         if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
           const currentDomain = window.location.hostname;
           setErrorBanner(
-            `Nota: El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Se ha iniciado sesión automáticamente en Modo Demo.`
+            `El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Para solucionarlo, el administrador debe agregar '${currentDomain}' en Firebase Console > Authentication > Settings > Authorized domains.`
           );
-          await handleQuickDemoLogin("kevin@familia.com", "123456");
         } else if (err.code === 'auth/popup-closed-by-user') {
           setErrorBanner("Ventana de inicio de sesión de Google cerrada por el usuario.");
         } else {
-          setErrorBanner(`Fallo al conectar con Google: ${err.message || err}.`);
+          setErrorBanner(`Error al conectar con Google: ${err.message || err}.`);
         }
       }
     } else {
-      setErrorBanner("Firebase no está configurado. Configure las credenciales de Firebase.");
+      setErrorBanner("Firebase no está configurado en las variables de entorno.");
     }
   };
 
-  // Quick Demo Login helper for testing without setup issues
-  const handleQuickDemoLogin = async (email = "kevin@familia.com", password = "123456") => {
-    setLoading(true);
-    setErrorBanner(null);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setCurrentUser(data.user);
-          setIdToken(data.idToken);
-          setIsAdmin(data.user.role === 'admin');
-          await fetchState();
-
-          if (data.user.familia_id) {
-            setView('hoy');
-          } else {
-            setView('family_onboarding');
-          }
-        } else {
-          setErrorBanner(data.error || "Fallo al ingresar con la cuenta demo.");
-        }
-      } else {
-        setErrorBanner("Error en el servidor al intentar acceso rápido demo.");
-      }
-    } catch (err: any) {
-      console.error("Demo login error:", err);
-      setErrorBanner("Error de conexión al ingresar en modo demo.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Email and Password Login & Simulation Fallback
+  // Real Firebase Auth Email & Password Login / Registration
   const handleLoginWithEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorBanner(null);
     if (!loginEmail.trim() || !loginPassword.trim()) {
-      setErrorBanner("Por favor complete todos los campos.");
+      setErrorBanner("Por favor ingresa tu correo electrónico y contraseña.");
+      return;
+    }
+    if (!auth) {
+      setErrorBanner("Firebase Authentication no está disponible.");
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Try real Firebase Auth if enabled
-      if (auth) {
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword.trim());
-          if (userCredential.user) {
-            console.log("Real Firebase Auth login successful!");
-            setLoading(false);
-            return;
-          }
-        } catch (authErr: any) {
-          console.warn("Real Firebase Auth login failed, falling back to database verification...", authErr);
-        }
-      }
-
-      // 2. Fallback to our custom simulated / seeded backend login
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail.trim(), password: loginPassword.trim() })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setCurrentUser(data.user);
-          setIdToken(data.idToken);
-          setIsAdmin(data.user.role === 'admin');
-          await fetchState();
-          
-          if (data.user.familia_id) {
-            setView('hoy');
-          } else {
-            setView('family_onboarding');
-          }
-        } else {
-          setErrorBanner(data.error || "Fallo al iniciar sesión.");
-        }
+      if (loginMode === 'register') {
+        await createUserWithEmailAndPassword(auth, loginEmail.trim(), loginPassword.trim());
+        showToast("¡Cuenta creada exitosamente con Firebase Auth!", "success");
       } else {
-        const errData = await res.json();
-        setErrorBanner(errData.error || "Credenciales incorrectas o error en el servidor.");
+        await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword.trim());
       }
     } catch (err: any) {
-      console.error("Error signing in with Email/Password:", err);
-      setErrorBanner(`Error al iniciar sesión: ${err.message || err}`);
+      console.error("Firebase Email Auth error:", err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        setErrorBanner("Correo o contraseña incorrectos. Si no tienes cuenta, selecciona 'Crear Cuenta'.");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setErrorBanner("Este correo electrónico ya tiene una cuenta. Selecciona 'Iniciar Sesión'.");
+      } else if (err.code === 'auth/weak-password') {
+        setErrorBanner("La contraseña debe tener al menos 6 caracteres.");
+      } else if (err.code === 'auth/invalid-email') {
+        setErrorBanner("Ingresa un correo electrónico válido.");
+      } else {
+        setErrorBanner(`Error de autenticación con Firebase: ${err.message || err}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -837,6 +779,7 @@ export default function App() {
 
   const handleJoinFamily = async (inviteCode: string) => {
     if (!currentUser) return;
+    setErrorBanner(null);
     setLoading(true);
     try {
       const res = await fetch('/api/family/join', {
@@ -857,12 +800,14 @@ export default function App() {
         };
         setCurrentUser(updatedProfile);
         setView('hoy');
+        showToast("¡Te has unido exitosamente a la familia! 🏠", "success");
       } else {
         const err = await res.json();
-        alert(err.error || "Fallo al unirse a la familia.");
+        setErrorBanner(err.error || "Fallo al unirse a la familia.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error joining family", err);
+      setErrorBanner("Error de conexión al intentar unirse a la familia.");
     } finally {
       setLoading(false);
     }
@@ -879,52 +824,58 @@ export default function App() {
     );
   }
 
-  // Pre-login screen mimicking Google Sign-In & local selection fallback
+  // Pre-login screen supporting real Google Sign-In and real Firebase Auth Email/Password
   if (view === 'login') {
     return (
       <div className="bg-[#F7F9FC] min-h-screen flex items-center justify-center p-4 animate-fade-in">
-        <main className="w-full max-w-md bg-white rounded-[32px] p-8 shadow-xl shadow-indigo-100/50 border border-indigo-50/80 flex flex-col justify-between">
-          <div className="text-center mb-4">
+        <main className="w-full max-w-md bg-white rounded-[32px] p-8 shadow-xl shadow-indigo-100/50 border border-indigo-50/80 flex flex-col justify-between text-center min-h-[480px]">
+          <div>
             <div className="w-16 h-16 bg-brand-primary rounded-[22px] flex items-center justify-center text-white shadow-lg shadow-indigo-200/50 mx-auto mb-4">
               <span className="material-symbols-outlined text-3xl font-bold">diversity_3</span>
             </div>
-            <h1 className="font-sans text-3xl font-extrabold text-brand-dark mb-1">Bienvenido de nuevo</h1>
-            <p className="font-sans text-sm text-gray-500">Continuemos construyendo juntos.</p>
-          </div>
+            <h1 className="font-sans text-3xl font-extrabold text-brand-dark mb-1">Núcleo Familiar</h1>
+            <p className="font-sans text-sm text-gray-500 mb-6">Inicia sesión de forma segura para gestionar tareas, metas y hábitos de tu hogar.</p>
 
-          {/* Selector de Método de Login */}
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
-            <button
-              onClick={() => setLoginMethod('email')}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                loginMethod === 'email'
-                  ? 'bg-white text-slate-800 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Usuario y Clave
-            </button>
-            <button
-              onClick={() => setLoginMethod('google')}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                loginMethod === 'google'
-                  ? 'bg-white text-slate-800 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Google SSO
-            </button>
-          </div>
+            {/* Selector de Método de Login */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMethod('google');
+                  setErrorBanner(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  loginMethod === 'google'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>Google SSO</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMethod('email');
+                  setErrorBanner(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  loginMethod === 'email'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>Correo y Contraseña</span>
+              </button>
+            </div>
 
-          <div className="space-y-6">
             {loginMethod === 'google' ? (
               <div className="space-y-4">
                 <button
                   onClick={handleLoginWithGoogle}
-                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white text-gray-700 font-sans text-xs font-bold rounded-2xl shadow-sm hover:bg-slate-50 hover:border-brand-primary active:scale-95 transition-all border border-gray-200 cursor-pointer"
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white hover:bg-slate-50 text-gray-800 font-sans text-xs font-bold rounded-2xl shadow-md hover:border-brand-primary active:scale-95 transition-all border border-gray-200 cursor-pointer"
                   type="button"
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
@@ -932,69 +883,102 @@ export default function App() {
                   </svg>
                   <span>Iniciar sesión con Google</span>
                 </button>
-                <p className="text-center font-sans text-[11px] text-gray-400">
-                  Usa tu cuenta de Google para sincronizar tus metas y tareas.
+
+                <p className="font-sans text-[11px] text-gray-400 leading-relaxed px-2">
+                  Autenticación de Google SSO directa mediante Firebase Auth.
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleLoginWithEmail} className="space-y-4">
-                <div className="space-y-1 text-left">
-                  <label className="font-sans text-[11px] font-bold text-gray-500 uppercase tracking-wider">Correo Electrónico</label>
+              <form onSubmit={handleLoginWithEmail} className="space-y-3 text-left">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-sans text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                    {loginMode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'} con Firebase
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode(loginMode === 'login' ? 'register' : 'login');
+                      setErrorBanner(null);
+                    }}
+                    className="font-sans text-[11px] font-bold text-brand-primary hover:underline cursor-pointer"
+                  >
+                    {loginMode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+                  </button>
+                </div>
+
+                <div className="space-y-1">
                   <input
                     type="email"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="correo@familia.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-xs font-bold text-gray-800 outline-none focus:border-brand-primary focus:bg-white transition-all"
+                    placeholder="correo@ejemplo.com"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-semibold text-gray-800 outline-none focus:border-brand-primary focus:bg-white transition-all"
                   />
                 </div>
-                <div className="space-y-1 text-left">
-                  <label className="font-sans text-[11px] font-bold text-gray-500 uppercase tracking-wider">Contraseña</label>
+
+                <div className="space-y-1">
                   <input
                     type="password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-xs font-bold text-gray-800 outline-none focus:border-brand-primary focus:bg-white transition-all"
+                    placeholder="Contraseña"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-semibold text-gray-800 outline-none focus:border-brand-primary focus:bg-white transition-all"
                   />
                 </div>
+
                 <button
                   type="submit"
-                  className="w-full py-3.5 px-4 bg-brand-primary text-white font-sans text-xs font-bold rounded-2xl shadow-lg shadow-indigo-100 hover:bg-brand-dark active:scale-95 transition-all cursor-pointer mt-2"
+                  disabled={loading}
+                  className="w-full py-3.5 px-4 bg-brand-primary text-white font-sans text-xs font-bold rounded-2xl shadow-md hover:bg-brand-dark active:scale-95 transition-all cursor-pointer disabled:opacity-50 mt-1"
                 >
-                  Entrar
+                  {loading ? 'Procesando...' : (loginMode === 'login' ? 'Ingresar con Firebase' : 'Crear Cuenta en Firebase')}
                 </button>
               </form>
             )}
 
             {errorBanner && (
-              <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 font-sans text-xs font-semibold rounded-2xl text-left space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="material-symbols-outlined text-rose-500 text-base mt-0.5">error</span>
-                  <div className="flex-1 leading-snug">{errorBanner}</div>
+              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 text-amber-900 font-sans text-xs font-medium rounded-2xl text-left space-y-3 shadow-xs animate-fade-in">
+                <div className="flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-amber-600 text-lg mt-0.5 shrink-0">warning</span>
+                  <div className="flex-1 leading-relaxed">{errorBanner}</div>
                 </div>
-                <button
-                  onClick={() => handleQuickDemoLogin("kevin@familia.com", "123456")}
-                  className="w-full mt-1 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-sans text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">bolt</span>
-                  Ingresar Inmediatamente en Modo Demo (Kevin Admin)
-                </button>
+
+                {errorBanner.includes('Dominios Autorizados') && (
+                  <div className="pt-2 border-t border-amber-200/60 space-y-2">
+                    <p className="text-[11px] text-amber-900 font-semibold">
+                      💡 Consejo: También puedes usar la pestaña <strong>"Correo y Contraseña"</strong> para ingresar inmediatamente con Firebase Auth sin depender de dominios autorizados para el popup de Google.
+                    </p>
+                    <div className="flex items-center justify-between gap-2 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200">
+                      <span className="font-mono text-[11px] font-bold text-amber-950 truncate">
+                        {window.location.hostname}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(window.location.hostname);
+                          showToast("¡Dominio copiado al portapapeles!", "success");
+                        }}
+                        className="shrink-0 bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                      >
+                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                        Copiar Dominio
+                      </button>
+                    </div>
+                    <ol className="text-[10px] text-amber-900 space-y-1 list-decimal pl-4 font-medium">
+                      <li>Abre <strong>Firebase Console &gt; Authentication &gt; Settings</strong></li>
+                      <li>Pestaña <strong>Authorized domains (Dominios autorizados)</strong></li>
+                      <li>Haz clic en <strong>Agregar dominio</strong>, pega el dominio copiado y guarda.</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
+          </div>
 
-            {/* Quick Demo Login Option */}
-            <div className="pt-2 border-t border-slate-100 text-center space-y-2">
-              <span className="text-[11px] font-medium text-gray-400">¿Quieres probar la app rápidamente?</span>
-              <button
-                onClick={() => handleQuickDemoLogin("kevin@familia.com", "123456")}
-                type="button"
-                className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 font-sans text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">badge</span>
-                Acceso Rápido Demo (Admin)
-              </button>
-            </div>
+          <div className="mt-8 pt-4 border-t border-slate-100">
+            <p className="font-sans text-[10px] text-gray-400 font-semibold">Núcleo Familiar v1.1.0 • Autenticación Oficial con Firebase Auth</p>
           </div>
         </main>
       </div>
@@ -1051,7 +1035,18 @@ export default function App() {
             {/* Join Family Option */}
             <div className="p-5 border border-indigo-50/80 rounded-2xl bg-slate-50/30 text-left">
               <h3 className="font-sans text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Unirse con código</h3>
-              <div className="flex gap-2">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const el = document.getElementById('inviteFamilyCode') as HTMLInputElement;
+                  if (el && el.value.trim()) {
+                    await handleJoinFamily(el.value.trim());
+                  } else {
+                    setErrorBanner("Por favor ingresa un código de invitación.");
+                  }
+                }}
+                className="flex gap-2"
+              >
                 <input
                   type="text"
                   placeholder="Código de invitación (ej. GARCIA123)"
@@ -1059,20 +1054,20 @@ export default function App() {
                   className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 outline-none uppercase"
                 />
                 <button
-                  onClick={async () => {
-                    const el = document.getElementById('inviteFamilyCode') as HTMLInputElement;
-                    if (el && el.value.trim()) {
-                      await handleJoinFamily(el.value.trim());
-                    } else {
-                      alert("Por favor ingresa un código de invitación.");
-                    }
-                  }}
+                  type="submit"
                   className="bg-slate-800 hover:bg-slate-900 text-white font-sans text-xs font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all cursor-pointer"
                 >
                   Unirse
                 </button>
-              </div>
+              </form>
             </div>
+
+            {errorBanner && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 font-sans text-xs font-semibold rounded-2xl text-left flex items-start gap-2 animate-fade-in">
+                <span className="material-symbols-outlined text-rose-600 text-base shrink-0 mt-0.5">error</span>
+                <span className="leading-relaxed">{errorBanner}</span>
+              </div>
+            )}
             
             {/* Logout button */}
             <button

@@ -1041,7 +1041,8 @@ export const dbService = {
 
   createFamily: async (uid: string, nombreFamilia: string) => {
     const familia_id = `fam_${Date.now()}`;
-    const codigo_invitacion = `CODE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const codeSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const codigo_invitacion = `CODE-${codeSuffix}`;
     
     const newFamily: Familia = {
       familia_id,
@@ -1053,8 +1054,10 @@ export const dbService = {
     if (isFirestoreEnabled && db) {
       try {
         await db.collection("familias").doc(familia_id).set(newFamily);
-        // Link user to this family
-        await db.collection("usuarios").doc(uid).update({ familia_id });
+        // Link user to this family (use set with merge: true so it creates user doc if missing)
+        await db.collection("usuarios").doc(uid).set({
+          familia_id
+        }, { merge: true });
         return { success: true, newFamily };
       } catch (e) {
         console.error("[Firestore createFamily Error]", e);
@@ -1065,24 +1068,64 @@ export const dbService = {
     const userIndex = localDatabase.usuarios.findIndex(u => u.uid === uid);
     if (userIndex !== -1) {
       localDatabase.usuarios[userIndex].familia_id = familia_id;
+    } else {
+      localDatabase.usuarios.push({
+        uid,
+        nombre: "Miembro de la Familia",
+        avatar_url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
+        familia_id,
+        racha_actual: 0,
+        puntos: 0,
+        configuracion_privacidad: { visible_familia_por_defecto: true }
+      });
     }
     return { success: true, newFamily };
   },
 
   joinFamilyByCode: async (uid: string, code: string) => {
-    const trimmedCode = code.trim().toUpperCase();
+    const rawCode = code.trim();
+    const upperCode = rawCode.toUpperCase();
+    const cleanInput = upperCode.replace(/^CODE-/, '');
     
+    let targetFamily: Familia | null = null;
+
     if (isFirestoreEnabled && db) {
       try {
-        const familiesSnap = await db.collection("familias").where("codigo_invitacion", "==", trimmedCode).limit(1).get();
-        if (!familiesSnap.empty) {
-          const familyDoc = familiesSnap.docs[0];
-          const familyData = familyDoc.data() as Familia;
-          
-          await db.collection("usuarios").doc(uid).update({ familia_id: familyData.familia_id });
-          return { success: true, family: familyData };
+        const familiesSnap = await db.collection("familias").get();
+        const allFamilies: Familia[] = [];
+        familiesSnap.forEach(doc => {
+          allFamilies.push({ familia_id: doc.id, ...doc.data() } as Familia);
+        });
+
+        // Flexible match against all family codes and IDs
+        targetFamily = allFamilies.find(f => {
+          const fCode = (f.codigo_invitacion || '').trim().toUpperCase();
+          const fCodeClean = fCode.replace(/^CODE-/, '');
+          const fId = (f.familia_id || '').trim().toUpperCase();
+
+          return (
+            fCode === upperCode ||
+            fCodeClean === cleanInput ||
+            fCode === `CODE-${cleanInput}` ||
+            fId === upperCode ||
+            fId === rawCode
+          );
+        }) || null;
+
+        if (targetFamily) {
+          // 1. Link user profile to family (use set with merge: true to avoid NOT_FOUND if doc is missing)
+          await db.collection("usuarios").doc(uid).set({
+            familia_id: targetFamily.familia_id
+          }, { merge: true });
+
+          // 2. Add user to family miembros array in Firestore
+          await db.collection("familias").doc(targetFamily.familia_id).update({
+            miembros: FieldValue.arrayUnion(uid)
+          }).catch(err => console.warn("[Firestore arrayUnion warning]", err));
+
+          return { success: true, family: targetFamily };
         } else {
-          throw new Error("Código de invitación no encontrado.");
+          throw new Error(`El código de invitación '${code}' no coincide con ninguna familia activa.`);
         }
       } catch (e: any) {
         console.error("[Firestore joinFamily Error]", e);
@@ -1090,15 +1133,45 @@ export const dbService = {
       }
     }
 
-    const family = localDatabase.familias.find(f => f.codigo_invitacion.toUpperCase() === trimmedCode);
-    if (family) {
+    // Local in-memory database search
+    targetFamily = localDatabase.familias.find(f => {
+      const fCode = (f.codigo_invitacion || '').trim().toUpperCase();
+      const fCodeClean = fCode.replace(/^CODE-/, '');
+      const fId = (f.familia_id || '').trim().toUpperCase();
+
+      return (
+        fCode === upperCode ||
+        fCodeClean === cleanInput ||
+        fCode === `CODE-${cleanInput}` ||
+        fId === upperCode ||
+        fId === rawCode
+      );
+    }) || null;
+
+    if (targetFamily) {
       const userIndex = localDatabase.usuarios.findIndex(u => u.uid === uid);
       if (userIndex !== -1) {
-        localDatabase.usuarios[userIndex].familia_id = family.familia_id;
+        localDatabase.usuarios[userIndex].familia_id = targetFamily.familia_id;
+      } else {
+        localDatabase.usuarios.push({
+          uid,
+          nombre: "Miembro de la Familia",
+          avatar_url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
+          familia_id: targetFamily.familia_id,
+          racha_actual: 0,
+          puntos: 0,
+          configuracion_privacidad: { visible_familia_por_defecto: true }
+        });
       }
-      return { success: true, family };
+
+      if (!targetFamily.miembros.includes(uid)) {
+        targetFamily.miembros.push(uid);
+      }
+
+      return { success: true, family: targetFamily };
     }
-    throw new Error("Código de invitación no válido.");
+
+    throw new Error(`El código de invitación '${code}' no es válido.`);
   },
 
   checkOverdueTasks: async () => {
