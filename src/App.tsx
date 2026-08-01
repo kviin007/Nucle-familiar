@@ -87,7 +87,7 @@ export default function App() {
   const [idToken, setIdToken] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
-  // Real Firebase Auth Email/Password login state
+  // Firebase Auth Email/Password login state
   const [loginMethod, setLoginMethod] = useState<'google' | 'email'>('google');
   const [loginMode, setLoginMode] = useState<'login' | 'register'>('login');
   const [loginEmail, setLoginEmail] = useState<string>('');
@@ -192,8 +192,6 @@ export default function App() {
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
           if (freshProfile) {
-            const isFreshAdmin = freshProfile.role === 'admin' || freshProfile.role === 'padre' || freshProfile.email === 'kevin@familia.com' || freshProfile.uid === 'kevin-admin-uid';
-            if (isFreshAdmin) setIsAdmin(true);
             setCurrentUser((prev: any) => ({
               ...prev,
               nombre: freshProfile.nombre,
@@ -201,7 +199,7 @@ export default function App() {
               familia_id: freshProfile.familia_id,
               puntos: freshProfile.puntos,
               racha_actual: freshProfile.racha_actual,
-              role: freshProfile.role || (isFreshAdmin ? "admin" : "member")
+              role: freshProfile.role || (isAdmin ? "admin" : "member")
             }));
           }
         }
@@ -234,7 +232,7 @@ export default function App() {
             if (syncRes.ok) {
               const uData = await syncRes.json();
               const tokenResult = await getIdTokenResult(firebaseUser);
-              const isUserAdmin = !!tokenResult.claims.admin || uData.updatedUser?.role === 'admin' || uData.updatedUser?.role === 'padre' || firebaseUser.email === 'kevin@familia.com' || firebaseUser.email === 'elcast1g4dor009@gmail.com' || firebaseUser.email?.includes('admin');
+              const isUserAdmin = tokenResult.claims.admin === true;
 
               setIdToken(tokenResult.token);
               setIsAdmin(isUserAdmin);
@@ -245,7 +243,7 @@ export default function App() {
                 email: firebaseUser.email,
                 avatar_url: uData.updatedUser?.avatar_url || firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
                 familia_id: uData.updatedUser?.familia_id || "",
-                role: uData.updatedUser?.role || (isUserAdmin ? "admin" : "member")
+                role: isUserAdmin ? "admin" : "member"
               };
 
               if (firestore) {
@@ -676,14 +674,16 @@ export default function App() {
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
       } catch (err: any) {
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          console.info("Inicio de sesión con Google cancelado por el usuario.");
+          return;
+        }
         console.error("Error signing in with Google:", err);
         if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
           const currentDomain = window.location.hostname;
           setErrorBanner(
             `El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Para solucionarlo, el administrador debe agregar '${currentDomain}' en Firebase Console > Authentication > Settings > Authorized domains.`
           );
-        } else if (err.code === 'auth/popup-closed-by-user') {
-          setErrorBanner("Ventana de inicio de sesión de Google cerrada por el usuario.");
         } else {
           setErrorBanner(`Error al conectar con Google: ${err.message || err}.`);
         }
@@ -693,7 +693,7 @@ export default function App() {
     }
   };
 
-  // Real Firebase Auth Email & Password Login / Registration
+  // Firebase Auth Email & Password Login / Registration
   const handleLoginWithEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorBanner(null);
@@ -885,7 +885,7 @@ export default function App() {
                 </button>
 
                 <p className="font-sans text-[11px] text-gray-400 leading-relaxed px-2">
-                  Autenticación de Google SSO directa mediante Firebase Auth.
+                  Autenticación de Google SSO directa mediante Firebase Auth. El rol de administrador se determina mediante Custom Claims.
                 </p>
               </div>
             ) : (
@@ -947,9 +947,6 @@ export default function App() {
 
                 {errorBanner.includes('Dominios Autorizados') && (
                   <div className="pt-2 border-t border-amber-200/60 space-y-2">
-                    <p className="text-[11px] text-amber-900 font-semibold">
-                      💡 Consejo: También puedes usar la pestaña <strong>"Correo y Contraseña"</strong> para ingresar inmediatamente con Firebase Auth sin depender de dominios autorizados para el popup de Google.
-                    </p>
                     <div className="flex items-center justify-between gap-2 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200">
                       <span className="font-mono text-[11px] font-bold text-amber-950 truncate">
                         {window.location.hostname}

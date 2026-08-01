@@ -860,14 +860,76 @@ export const dbService = {
       }
 
       if (isFirestoreEnabled && db) {
+        // TTL policy: Resolved consequences expire 90 days after resolution
+        const expiraEnDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
         await db.collection("consecuencias_pendientes").doc(pendiente_id).update({
-          estado: item.estado
+          estado: item.estado,
+          resolucion_fecha: new Date().toISOString(),
+          expira_en: expiraEnDate
         });
       }
 
       return { success: true, estado: item.estado };
     }
     throw new Error("Consecuencia pendiente no encontrada.");
+  },
+
+  logAdminActivity: async (logData: { usuario_id: string; familia_id?: string; accion: string; detalles?: any }) => {
+    const log_id = `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    // TTL policy: Admin activity logs expire 180 days after creation
+    const expiraEnDate = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+    const newLog = {
+      log_id,
+      usuario_id: logData.usuario_id,
+      familia_id: logData.familia_id || "",
+      accion: logData.accion,
+      detalles: logData.detalles || {},
+      creado_en: new Date().toISOString(),
+      expira_en: expiraEnDate
+    };
+
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("actividad_logs").doc(log_id).set(newLog);
+      } catch (e) {
+        console.error("[Firestore logAdminActivity Error]", e);
+      }
+    }
+    return { success: true, newLog };
+  },
+
+  markNotificationRead: async (notificacion_id: string, usuario_id: string) => {
+    // TTL policy: Read notifications expire 30 days after being read
+    const expiraEnDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("notificaciones").doc(notificacion_id).update({
+          leida: true,
+          leida_en: new Date().toISOString(),
+          expira_en: expiraEnDate
+        });
+      } catch (e) {
+        console.error("[Firestore markNotificationRead Error]", e);
+      }
+    }
+    return { success: true };
+  },
+
+  invalidateFcmToken: async (token_id: string, usuario_id: string) => {
+    // TTL policy: Invalid or expired FCM tokens expire 60 days after invalidation
+    const expiraEnDate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+    if (isFirestoreEnabled && db) {
+      try {
+        await db.collection("tokens_fcm").doc(token_id).update({
+          estado: 'invalido',
+          invalido_en: new Date().toISOString(),
+          expira_en: expiraEnDate
+        });
+      } catch (e) {
+        console.error("[Firestore invalidateFcmToken Error]", e);
+      }
+    }
+    return { success: true };
   },
 
   createJournalEntry: async (entry: Partial<DiarioEntrada>) => {
