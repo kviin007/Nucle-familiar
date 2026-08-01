@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import EmptyStateIllustration from './EmptyStateIllustration';
 import { DiarioEntrada, Usuario, ReaccionDiario } from '../types';
 
 interface DiarioScreenProps {
@@ -15,6 +17,7 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
   const [visible, setVisible] = useState<boolean>(true);
   const [recording, setRecording] = useState<boolean>(false);
   const [filterTab, setFilterTab] = useState<'all' | 'mine'>('all');
+  const [showPastEntries, setShowPastEntries] = useState<boolean>(false);
 
   const moods: { label: string; icon: string; value: DiarioEntrada['emocion']; color: string }[] = [
     { label: 'Triste', icon: '😢', value: 'Sad', color: 'bg-blue-50 text-blue-800' },
@@ -509,126 +512,172 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
             {/* Entries Feed List */}
             <div className="space-y-4">
               {filteredEntries.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
-                  <span className="material-symbols-outlined text-gray-300 text-4xl">edit_off</span>
-                  <p className="font-sans text-xs text-gray-500 font-semibold">No hay entradas de diario en esta categoría.</p>
-                </div>
+                <EmptyStateIllustration
+                  topic="diario"
+                  title="Sin entradas en el diario"
+                  description="Comparte cómo fue tu día o escribe una reflexiones para el historial de tu familia."
+                />
               ) : (
-                filteredEntries.map((entry) => {
-                  const author = getAuthor(entry.usuario_id);
-                  const isMine = entry.usuario_id === currentUser?.uid;
-                  const reactions = entry.reacciones || [];
+                (() => {
+                  const recentEntries = filteredEntries.slice(0, 2);
+                  const olderEntries = filteredEntries.slice(2);
 
-                  // Group reactions by emoji to count them
-                  const groupedReactions: { [emoji: string]: { count: number; userIds: string[]; reactedByMe: boolean } } = {};
-                  reactions.forEach(r => {
-                    if (!groupedReactions[r.emoji]) {
-                      groupedReactions[r.emoji] = { count: 0, userIds: [], reactedByMe: false };
-                    }
-                    groupedReactions[r.emoji].count += 1;
-                    groupedReactions[r.emoji].userIds.push(r.usuario_id);
-                    if (currentUser && r.usuario_id === currentUser.uid) {
-                      groupedReactions[r.emoji].reactedByMe = true;
-                    }
-                  });
+                  const renderEntryCard = (entry: DiarioEntrada) => {
+                    const author = getAuthor(entry.usuario_id);
+                    const isMine = entry.usuario_id === currentUser?.uid;
+                    const reactions = entry.reacciones || [];
 
-                  return (
-                    <div
-                      key={entry.entrada_id}
-                      className="p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100/60 shadow-xs space-y-4 hover:shadow-md transition-all"
-                    >
-                      {/* Entry Top Header */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={author.avatar_url}
-                            alt={author.nombre}
-                            className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-xs"
-                          />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-sans text-xs font-bold text-gray-800">
-                                {author.nombre} {isMine && <span className="text-[10px] text-brand-primary font-normal">(Tú)</span>}
-                              </h4>
-                              <span className="text-sm">
-                                {entry.emocion === 'Great' ? '😁' : entry.emocion === 'Good' ? '🙂' : entry.emocion === 'Okay' ? '😐' : entry.emocion === 'Angry' ? '😠' : '😢'}
-                              </span>
+                    const groupedReactions: { [emoji: string]: { count: number; userIds: string[]; reactedByMe: boolean } } = {};
+                    reactions.forEach(r => {
+                      if (!groupedReactions[r.emoji]) {
+                        groupedReactions[r.emoji] = { count: 0, userIds: [], reactedByMe: false };
+                      }
+                      groupedReactions[r.emoji].count += 1;
+                      groupedReactions[r.emoji].userIds.push(r.usuario_id);
+                      if (currentUser && r.usuario_id === currentUser.uid) {
+                        groupedReactions[r.emoji].reactedByMe = true;
+                      }
+                    });
+
+                    return (
+                      <motion.div
+                        key={entry.entrada_id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100/60 shadow-xs space-y-4 hover:shadow-md transition-all"
+                      >
+                        {/* Entry Top Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={author.avatar_url}
+                              alt={author.nombre}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-xs"
+                            />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-sans text-xs font-bold text-gray-800">
+                                  {author.nombre} {isMine && <span className="text-[10px] text-brand-primary font-normal">(Tú)</span>}
+                                </h4>
+                                <span className="text-sm">
+                                  {entry.emocion === 'Great' ? '😁' : entry.emocion === 'Good' ? '🙂' : entry.emocion === 'Okay' ? '😐' : entry.emocion === 'Angry' ? '😠' : '😢'}
+                                </span>
+                              </div>
+                              <p className="font-sans text-[10px] text-gray-400 font-medium">{entry.fecha}</p>
                             </div>
-                            <p className="font-sans text-[10px] text-gray-400 font-medium">{entry.fecha}</p>
                           </div>
+
+                          <span className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold flex items-center gap-1 ${
+                            entry.visible_familia ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-gray-700'
+                          }`}>
+                            <span className="material-symbols-outlined text-[12px]">
+                              {entry.visible_familia ? 'groups' : 'lock'}
+                            </span>
+                            {entry.visible_familia ? 'Familia' : 'Privado'}
+                          </span>
                         </div>
 
-                        {/* Privacy badge */}
-                        <span className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold flex items-center gap-1 ${
-                          entry.visible_familia ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-gray-700'
-                        }`}>
-                          <span className="material-symbols-outlined text-[12px]">
-                            {entry.visible_familia ? 'groups' : 'lock'}
-                          </span>
-                          {entry.visible_familia ? 'Familia' : 'Privado'}
-                        </span>
-                      </div>
+                        {/* Entry Body */}
+                        <p className="font-sans text-xs sm:text-sm text-gray-700 leading-relaxed pl-1 border-l-2 border-brand-primary/40">
+                          {entry.texto}
+                        </p>
 
-                      {/* Entry Body */}
-                      <p className="font-sans text-xs sm:text-sm text-gray-700 leading-relaxed pl-1 border-l-2 border-brand-primary/40">
-                        {entry.texto}
-                      </p>
+                        {/* Reactions Bar */}
+                        <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {Object.keys(groupedReactions).length === 0 ? (
+                              <span className="font-sans text-[11px] text-gray-400 italic">Sin reacciones aún</span>
+                            ) : (
+                              Object.entries(groupedReactions).map(([emoji, data]) => {
+                                const reactorNames = data.userIds.map(uid => getAuthor(uid).nombre).join(', ');
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => onAddReaction && onAddReaction(entry.entrada_id, emoji)}
+                                    title={`Reaccionaron: ${reactorNames}`}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-sans text-xs font-bold transition-all cursor-pointer ${
+                                      data.reactedByMe
+                                        ? 'bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs scale-105'
+                                        : 'bg-white text-gray-700 border border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span>{data.count}</span>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
 
-                      {/* Quick Reactions Bar */}
-                      <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
-                        {/* Active reactions chips */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {Object.keys(groupedReactions).length === 0 ? (
-                            <span className="font-sans text-[11px] text-gray-400 italic">Sin reacciones aún — ¡sé el primero!</span>
-                          ) : (
-                            Object.entries(groupedReactions).map(([emoji, data]) => {
-                              const reactorNames = data.userIds.map(uid => getAuthor(uid).nombre).join(', ');
+                          <div className="flex items-center gap-1 bg-white/90 p-1 rounded-full border border-slate-200/80 shadow-2xs">
+                            <span className="font-sans text-[10px] text-gray-400 px-2 font-bold uppercase tracking-wider hidden sm:inline">
+                              Reaccionar:
+                            </span>
+                            {reactionEmojis.map((r) => {
+                              const hasReactedThis = reactions.some(rx => rx.usuario_id === currentUser?.uid && rx.emoji === r.emoji);
                               return (
                                 <button
-                                  key={emoji}
+                                  key={r.emoji}
                                   type="button"
-                                  onClick={() => onAddReaction && onAddReaction(entry.entrada_id, emoji)}
-                                  title={`Reaccionaron: ${reactorNames}`}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-sans text-xs font-bold transition-all cursor-pointer ${
-                                    data.reactedByMe
-                                      ? 'bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs scale-105'
-                                      : 'bg-white text-gray-700 border border-slate-200 hover:bg-slate-100'
+                                  onClick={() => onAddReaction && onAddReaction(entry.entrada_id, r.emoji)}
+                                  title={r.label}
+                                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all cursor-pointer hover:scale-125 ${
+                                    hasReactedThis ? 'bg-rose-100 border border-rose-300 scale-110 shadow-xs' : 'hover:bg-slate-100'
                                   }`}
                                 >
-                                  <span>{emoji}</span>
-                                  <span>{data.count}</span>
+                                  {r.emoji}
                                 </button>
                               );
-                            })
-                          )}
+                            })}
+                          </div>
                         </div>
+                      </motion.div>
+                    );
+                  };
 
-                        {/* Reaction Add Palette */}
-                        <div className="flex items-center gap-1 bg-white/90 p-1 rounded-full border border-slate-200/80 shadow-2xs">
-                          <span className="font-sans text-[10px] text-gray-400 px-2 font-bold uppercase tracking-wider hidden sm:inline">
-                            Reaccionar:
-                          </span>
-                          {reactionEmojis.map((r) => {
-                            const hasReactedThis = reactions.some(rx => rx.usuario_id === currentUser?.uid && rx.emoji === r.emoji);
-                            return (
-                              <button
-                                key={r.emoji}
-                                type="button"
-                                onClick={() => onAddReaction && onAddReaction(entry.entrada_id, r.emoji)}
-                                title={r.label}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all cursor-pointer hover:scale-125 ${
-                                  hasReactedThis ? 'bg-rose-100 border border-rose-300 scale-110 shadow-xs' : 'hover:bg-slate-100'
-                                }`}
+                  return (
+                    <div className="space-y-4">
+                      {/* Recent 2 entries */}
+                      {recentEntries.map(renderEntryCard)}
+
+                      {/* Accordion for older entries */}
+                      {olderEntries.length > 0 && (
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowPastEntries(!showPastEntries)}
+                            className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-sans text-xs font-bold rounded-2xl border border-slate-200 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
+                          >
+                            <span className="material-symbols-outlined text-base">
+                              {showPastEntries ? 'expand_less' : 'history'}
+                            </span>
+                            <span>
+                              {showPastEntries
+                                ? 'Ocultar entradas pasadas'
+                                : `Ver ${olderEntries.length} entrada(s) pasada(s)`}
+                            </span>
+                          </button>
+
+                          <AnimatePresence>
+                            {showPastEntries && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.25 }}
+                                className="space-y-4 mt-4 overflow-hidden"
                               >
-                                {r.emoji}
-                              </button>
-                            );
-                          })}
+                                {olderEntries.map(renderEntryCard)}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
-                })
+                })()
               )}
             </div>
           </div>

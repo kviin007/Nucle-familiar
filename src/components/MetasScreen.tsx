@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
+import EmptyStateIllustration from './EmptyStateIllustration';
 import { Meta, Usuario, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente } from '../types';
 
 interface MetasScreenProps {
@@ -229,7 +231,8 @@ export default function MetasScreen({
   const [consecuenciaId, setConsecuenciaId] = useState<string>('');
   const [requiereAprobacionAdulto, setRequiereAprobacionAdulto] = useState<boolean>(true);
 
-  // Create Consequence Form State
+  // Consequence & Goal Submit States
+  const [isSubmittingGoal, setIsSubmittingGoal] = useState<boolean>(false);
   const [consTitulo, setConsTitulo] = useState<string>('');
   const [consDesc, setConsDesc] = useState<string>('');
   const [consMin, setConsMin] = useState<number>(20);
@@ -287,37 +290,44 @@ export default function MetasScreen({
     }
   };
 
-  const handleCreateGoalSubmit = (e: React.FormEvent) => {
+  const handleCreateGoalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titulo.trim()) return;
+    if (!titulo.trim() || isSubmittingGoal) return;
 
-    onAddGoal({
-      usuario_id: currentUser?.uid || "kevin-admin-uid",
-      familia_id: currentFamilyId,
-      tipo,
-      titulo: titulo.trim(),
-      categoria,
-      frecuencia_objetivo: Number(frecuenciaObjetivo),
-      unidad_frecuencia: unidadFrecuencia,
-      duracion_valor: Number(duracionValor),
-      duracion_unidad: duracionUnidad,
-      fecha_inicio: fechaInicio,
-      fecha_fin: computedFechaFin,
-      miembros_asignados: tipo === 'familiar' ? selectedMemberIds : [currentUser?.uid || "kevin-admin-uid"],
-      generar_tareas_automaticas: generarTareas,
-      dias_preferidos: diasPreferidos,
-      hora_sugerida: horaSugerida,
-      consecuencias_activas: consecuenciasActivas,
-      consecuencia_id: consecuenciaId,
-      requiere_aprobacion_adulto: requiereAprobacionAdulto,
-      recompensa_activa: recompensaActiva,
-      recompensa_id: recompensaId,
-      porcentaje_semanal: 0,
-      visible_familia: true
-    });
+    try {
+      setIsSubmittingGoal(true);
+      await onAddGoal({
+        usuario_id: currentUser?.uid || "kevin-admin-uid",
+        familia_id: currentFamilyId,
+        tipo,
+        titulo: titulo.trim(),
+        categoria,
+        frecuencia_objetivo: Number(frecuenciaObjetivo),
+        unidad_frecuencia: unidadFrecuencia,
+        duracion_valor: Number(duracionValor),
+        duracion_unidad: duracionUnidad,
+        fecha_inicio: fechaInicio,
+        fecha_fin: computedFechaFin,
+        miembros_asignados: tipo === 'familiar' ? selectedMemberIds : [currentUser?.uid || "kevin-admin-uid"],
+        generar_tareas_automaticas: generarTareas,
+        dias_preferidos: diasPreferidos,
+        hora_sugerida: horaSugerida,
+        consecuencias_activas: consecuenciasActivas,
+        consecuencia_id: consecuenciaId,
+        requiere_aprobacion_adulto: requiereAprobacionAdulto,
+        recompensa_activa: recompensaActiva,
+        recompensa_id: recompensaId,
+        porcentaje_semanal: 0,
+        visible_familia: true
+      });
 
-    setTitulo('');
-    setShowModal(false);
+      setTitulo('');
+      setShowModal(false);
+    } catch (err) {
+      console.error("Error creating goal:", err);
+    } finally {
+      setIsSubmittingGoal(false);
+    }
   };
 
   const handleCreateRewSubmit = async (e: React.FormEvent) => {
@@ -633,15 +643,36 @@ export default function MetasScreen({
         ) : null;
       })()}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredMetas.map((meta) => {
+      {filteredMetas.length === 0 ? (
+        <div className="py-8">
+          <EmptyStateIllustration
+            topic="metas"
+            title={`Sin metas ${activeTab === 'familiar' ? 'familiares' : 'individuales'}`}
+            description="Crea un objetivo claro para formar hábitos saludables en tu núcleo familiar."
+            actionButton={
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-brand-primary text-white px-5 py-2.5 rounded-2xl font-sans text-xs font-bold flex items-center gap-1.5 shadow-md hover:bg-brand-dark transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-lg">add</span>
+                <span>Crear Primera Meta</span>
+              </button>
+            }
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredMetas.map((meta, index) => {
           const owner = usuarios.find(u => u.uid === meta.usuario_id);
           const isFamiliar = meta.tipo === 'familiar';
           const deadlineInfo = getGoalDeadlineInfo(meta);
 
           return (
-            <div
+            <motion.div
               key={meta.meta_id}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: index * 0.04 }}
               onClick={() => setSelectedGoalDetail(meta)}
               className={`bg-white rounded-3xl p-5 border shadow-xl flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 min-h-[200px] cursor-pointer relative group ${
                 deadlineInfo?.cardBorderClass 
@@ -769,7 +800,7 @@ export default function MetasScreen({
                   </div>
                 </div>
               )}
-            </div>
+            </motion.div>
           );
         })}
 
@@ -786,6 +817,7 @@ export default function MetasScreen({
           </span>
         </div>
       </div>
+      )}
 
       {/* CREATE GOAL MODAL */}
       {showModal && (
@@ -1152,9 +1184,17 @@ Proporciona recomendaciones prácticas sobre si esta frecuencia es equilibrada, 
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full bg-brand-primary hover:bg-brand-dark text-white py-3 rounded-full font-sans text-sm font-bold shadow-md transition-all active:scale-95"
+                  disabled={isSubmittingGoal || !titulo.trim()}
+                  className="w-full bg-brand-primary hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-full font-sans text-sm font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
                 >
-                  Guardar y Activar Meta
+                  {isSubmittingGoal ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <span>Guardar y Activar Meta</span>
+                  )}
                 </button>
               </div>
             </form>

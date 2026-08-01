@@ -96,6 +96,7 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
   const [estimatedTime, setEstimatedTime] = useState<number>(30);
   const [repetition, setRepetition] = useState<string>('once');
   const [loading, setLoading] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [success, setSuccess] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -146,8 +147,9 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
     setDescription(`Sugerencia de Gemini IA: ${task.reasoning}`);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || loading) return;
     setValidationError(null);
 
     if (!recipient) {
@@ -166,31 +168,36 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
       return;
     }
 
+    setIsSubmitting(true);
     setLoading(true);
-    // Simulate API request
-    setTimeout(() => {
-      onAddTask(
+    try {
+      await onAddTask(
         title.trim(),
         recipient,
         scheduledTime || '12:00',
         estimatedTime,
         true,
-        category,
+        category as TaskCategory,
         isHighPriority,
         isCritical,
         isCritical ? criticalConfig : undefined
       );
-      
-      setLoading(false);
+
       setSuccess(true);
       setTitle('');
       setDescription('');
       setRecipient('');
       setIsHighPriority(false);
       setIsCritical(false);
-      
+
       setTimeout(() => setSuccess(false), 2500);
-    }, 1200);
+    } catch (err) {
+      console.error("Error assigning task:", err);
+      setValidationError("Error al asignar la tarea.");
+    } finally {
+      setIsSubmitting(false);
+      setLoading(false);
+    }
   };
 
   return (
@@ -544,14 +551,14 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
         <div className="mt-2 flex justify-end">
           <button
             type="submit"
-            disabled={loading}
-            className={`w-full md:w-auto px-10 py-3 rounded-full font-sans text-xs font-bold uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 ${
+            disabled={loading || isSubmitting}
+            className={`w-full md:w-auto px-10 py-3 rounded-full font-sans text-xs font-bold uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
               success
                 ? 'bg-emerald-600 text-white'
                 : 'bg-brand-primary hover:bg-brand-dark text-white'
             }`}
           >
-            {loading ? (
+            {loading || isSubmitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                 <span>Asignando...</span>

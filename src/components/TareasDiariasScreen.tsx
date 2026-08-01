@@ -40,18 +40,20 @@ export default function TareasDiariasScreen({
   const [categoria, setCategoria] = useState<'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros'>('Hogar');
   const [visibleFamilia, setVisibleFamilia] = useState(true);
   const [esPrioridadAlta, setEsPrioridadAlta] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categories = ['Todas', 'Hogar', 'Estudio', 'Salud', 'Personal', 'Otros'];
 
   const handleSubmitTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!titulo.trim()) {
       showToast("Por favor ingresa un título para la tarea.", "error");
       return;
     }
 
-    setIsCreating(true);
+    setIsSubmitting(true);
     try {
       await onAddTask(
         titulo.trim(),
@@ -69,7 +71,7 @@ export default function TareasDiariasScreen({
       console.error("Error al agregar tarea:", err);
       showToast("Error al agregar la tarea.", "error");
     } finally {
-      setIsCreating(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -434,10 +436,17 @@ export default function TareasDiariasScreen({
 
                 <button
                   type="submit"
-                  disabled={isCreating}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-6 py-2.5 rounded-2xl shadow-md cursor-pointer disabled:opacity-50"
+                  disabled={isSubmitting}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-6 py-2.5 rounded-2xl shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-2"
                 >
-                  {isCreating ? 'Guardando...' : 'Crear Tarea'}
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <span>Crear Tarea</span>
+                  )}
                 </button>
               </div>
             </form>

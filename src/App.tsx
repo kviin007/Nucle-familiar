@@ -86,6 +86,27 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [idToken, setIdToken] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [isFirestoreActive, setIsFirestoreActive] = useState<boolean>(true);
+
+  // Periodic health check for Firestore backend status (every 2 minutes)
+  useEffect(() => {
+    const checkFirestoreHealth = async () => {
+      try {
+        const res = await fetch('/api/health/firestore-status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsFirestoreActive(!!data.isFirestoreEnabled);
+        }
+      } catch (err) {
+        console.warn("Firestore health check error:", err);
+        setIsFirestoreActive(false);
+      }
+    };
+
+    checkFirestoreHealth();
+    const interval = setInterval(checkFirestoreHealth, 120000); // 2 minutes
+    return () => clearInterval(interval);
+  }, []);
 
   // Firebase Auth Email/Password login state
   const [loginMethod, setLoginMethod] = useState<'google' | 'email'>('google');
@@ -1185,7 +1206,7 @@ export default function App() {
               <div className="text-left">
                 <p className="font-sans text-[10px] font-bold text-gray-800 truncate max-w-[100px]">{currentUser?.nombre}</p>
                 <p className="font-sans text-[8px] text-gray-400 font-bold uppercase tracking-wider">
-                  {isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'padre' || currentUser?.email === 'kevin@familia.com' || currentUser?.uid === 'kevin-admin-uid' ? 'ADMINISTRADOR' : 'MIEMBRO'}
+                  {isAdmin ? 'ADMINISTRADOR' : 'MIEMBRO'}
                 </p>
               </div>
             </div>
@@ -1240,6 +1261,21 @@ export default function App() {
           </div>
         ) : (
           <div className="max-w-5xl mx-auto">
+            {!isFirestoreActive && (
+              <div className="mb-6 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 flex items-center gap-3 shadow-sm text-left">
+                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm">
+                  <span className="material-symbols-outlined text-2xl">cloud_off</span>
+                </div>
+                <div>
+                  <h3 className="font-sans text-sm font-extrabold text-rose-950">
+                    Almacenamiento Cloud en Firestore no activo
+                  </h3>
+                  <p className="font-sans text-xs text-rose-900/90 mt-0.5 leading-relaxed">
+                    Atención: La base de datos Firestore no se encuentra disponible. Los datos que ingreses no se guardarán de forma permanente en la nube y se perderán al recargar.
+                  </p>
+                </div>
+              </div>
+            )}
             {!isFirebaseEnabled && (
               <div className="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm text-left">
                 <div className="flex items-start gap-3">

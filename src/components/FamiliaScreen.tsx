@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { Usuario, TareaDiaria, Familia } from '../types';
 
 interface FamiliaScreenProps {
@@ -104,13 +105,16 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
 
       {/* Grid of Members */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        {familyMembers.map((member) => {
+        {familyMembers.map((member, index) => {
           const completion = getMemberCompletion(member.uid);
           const isCurrentUser = member.uid === currentUser?.uid;
           
           return (
-            <div
+            <motion.div
               key={member.uid}
+              initial={{ opacity: 0, y: 15, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.25, delay: index * 0.05 }}
               onClick={() => onSelectUser(member.uid)}
               className={`flex flex-col items-center justify-center p-5 bg-white rounded-3xl border shadow-xl shadow-indigo-100/20 relative group cursor-pointer hover:shadow-md transition-all duration-300 ${
                 isCurrentUser ? 'border-brand-primary/30 ring-1 ring-brand-primary/10' : 'border-indigo-50/60'
@@ -183,7 +187,7 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
                   <span>Goal: 200 pts</span>
                 </div>
               </div>
-            </div>
+            </motion.div>
           );
         })}
 

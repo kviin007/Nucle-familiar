@@ -49,6 +49,13 @@ async function startServer() {
     });
   });
 
+  // API Route: Check Firestore Status
+  app.get("/api/health/firestore-status", (req, res) => {
+    res.json({
+      isFirestoreEnabled: dbService.getIsFirestoreEnabled()
+    });
+  });
+
   // API Route: Reset Database State (Protected by admin claims)
   app.post("/api/reset", adminAuthMiddleware, async (req, res) => {
     try {
@@ -699,6 +706,44 @@ Devuelve ÚNICAMENTE un array JSON válido de objetos con esas propiedades. Sin 
           reasoning: "Promueve el movimiento físico y el tiempo compartido."
         }
       ]);
+    }
+  });
+
+  // API Route: Generar Ilustración SVG para Estados Vacíos con Gemini AI
+  app.post("/api/gemini/empty-illustration", async (req, res) => {
+    const { topic } = req.body;
+    if (!topic) {
+      return res.status(400).json({ error: "El campo topic es obligatorio." });
+    }
+
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY.includes("MY_GEMINI_API_KEY")) {
+      return res.json({ svg: null, message: "GEMINI_API_KEY no configurada o usando valor por defecto." });
+    }
+
+    try {
+      const ai = getGeminiClient();
+      const prompt = `Crea una ilustración vectorial SVG simple, limpia, moderna y estética para un estado vacío con el tema: "${topic}".
+La ilustración debe usar colores suaves en la paleta indigo/amber/purple (ej. #6366F1, #F59E0B, #8B5CF6, #E0E7FF, #EEF2FF).
+Debe tener viewBox="0 0 200 200" e incluir formas vectoriales simples (<circle>, <path>, <rect>, <g>) sin texto ni etiquetas externas.
+Devuelve ÚNICAMENTE el código SVG puro iniciando con <svg> y terminando con </svg>. Sin bloques de formato markdown ni explicaciones.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+      });
+
+      let svgText = response?.text || "";
+      svgText = svgText.trim();
+      if (svgText.includes("<svg") && svgText.includes("</svg>")) {
+        const startIdx = svgText.indexOf("<svg");
+        const endIdx = svgText.lastIndexOf("</svg>") + 6;
+        svgText = svgText.substring(startIdx, endIdx);
+        res.json({ svg: svgText });
+      } else {
+        res.json({ svg: null });
+      }
+    } catch (e: any) {
+      res.json({ svg: null, fallback: true });
     }
   });
 
