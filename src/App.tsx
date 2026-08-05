@@ -17,6 +17,7 @@ import TareasDiariasScreen from './components/TareasDiariasScreen';
 import FocusModeOverlay from './components/FocusModeOverlay';
 import LiveActivityBanner from './components/LiveActivityBanner';
 import GeminiAdvisorModal from './components/GeminiAdvisorModal';
+import { getGoogleToken, setGoogleToken } from './services/googleWorkspace';
 
 // Import Firebase Authentication and Firestore if available
 import { 
@@ -85,6 +86,7 @@ export default function App() {
   const [pendingOnboardingData, setPendingOnboardingData] = useState<OnboardingData | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [idToken, setIdToken] = useState<string | null>(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(getGoogleToken());
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [isFirestoreActive, setIsFirestoreActive] = useState<boolean>(true);
 
@@ -700,7 +702,15 @@ export default function App() {
     if (auth) {
       try {
         const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
+        provider.addScope('https://www.googleapis.com/auth/calendar');
+        provider.addScope('https://www.googleapis.com/auth/tasks');
+        const result = await signInWithPopup(auth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          setGoogleAccessToken(credential.accessToken);
+          setGoogleToken(credential.accessToken);
+          showToast("¡Sincronizado con Google Calendar y Tasks! 🗓️", "success");
+        }
       } catch (err: any) {
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
           console.info("Inicio de sesión con Google cancelado por el usuario.");
@@ -718,6 +728,30 @@ export default function App() {
       }
     } else {
       setErrorBanner("Firebase no está configurado en las variables de entorno.");
+    }
+  };
+
+  const handleConnectGoogleWorkspace = async () => {
+    if (!auth) {
+      showToast("Firebase Authentication no está disponible.", "error");
+      return;
+    }
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/calendar');
+      provider.addScope('https://www.googleapis.com/auth/tasks');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+        setGoogleToken(credential.accessToken);
+        showToast("¡Conectado exitosamente con Google Calendar & Tasks! 📅", "success");
+      }
+    } catch (err: any) {
+      console.error("Error connecting Google Workspace:", err);
+      if (err.code !== 'auth/popup-closed-by-user') {
+        showToast("No se pudo conectar con Google Workspace.", "error");
+      }
     }
   };
 
@@ -1313,6 +1347,8 @@ export default function App() {
                 metas={metas}
                 diario={diario}
                 currentUser={currentUser}
+                googleAccessToken={googleAccessToken}
+                onConnectGoogleWorkspace={handleConnectGoogleWorkspace}
                 onToggleTask={handleTaskClick}
                 onAddTaskClick={() => setView('admin-assign-task')}
                 onGoToMetas={() => setView('metas')}

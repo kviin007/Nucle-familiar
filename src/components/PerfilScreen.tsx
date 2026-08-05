@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Usuario, TareaDiaria, Familia } from '../types';
 import CodeExporterScreen from './CodeExporterScreen';
-import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X } from 'lucide-react';
 import { auth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from '../lib/firebase';
+import { getFamilyFeedbackFormUrl } from '../services/googleWorkspace';
 
 interface PerfilScreenProps {
   currentUser: Usuario | null;
@@ -40,6 +41,8 @@ export default function PerfilScreen({
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [isSavingPass, setIsSavingPass] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const feedbackFormUrl = getFamilyFeedbackFormUrl();
 
   const activeFamily = familias.find(f => f.familia_id === currentUser?.familia_id);
   const userTasks = (tareas || []).filter(t => t.usuario_id === currentUser?.uid);
@@ -273,6 +276,28 @@ export default function PerfilScreen({
                 </div>
               </div>
             </div>
+
+            {/* QUICK GOOGLE FORM FEEDBACK BUTTON */}
+            <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                  <MessageSquarePlus size={18} />
+                </span>
+                <div>
+                  <h4 className="text-xs font-black text-slate-900">Sugerencias y Comentarios</h4>
+                  <p className="text-[10px] text-slate-500">Envía tus ideas para mejorar el núcleo familiar.</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsFeedbackModalOpen(true)}
+                className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Enviar Sugerencia (Google Form)</span>
+                <ExternalLink size={14} />
+              </button>
+            </div>
           </div>
 
           {/* Right Column: Edit Profile Name & Change Password Forms */}
@@ -459,6 +484,65 @@ export default function PerfilScreen({
       {activeTab === 'codigo' && isAdmin && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <CodeExporterScreen />
+        </div>
+      )}
+
+      {/* GOOGLE FORM FEEDBACK MODAL */}
+      {isFeedbackModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-indigo-100 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-purple-700 to-indigo-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <MessageSquarePlus size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Feedback y Sugerencias de la Familia</h3>
+                  <p className="text-[11px] text-purple-200">Formulario Oficial de Google Forms</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsFeedbackModalOpen(false)}
+                className="p-1.5 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body with embedded Google Form */}
+            <div className="flex-1 p-4 bg-slate-50 overflow-hidden min-h-[420px]">
+              <iframe
+                src={feedbackFormUrl}
+                title="Google Form Sugerencias"
+                className="w-full h-full min-h-[400px] rounded-2xl border border-slate-200 bg-white"
+                loading="lazy"
+              >
+                Cargando formulario de sugerencias...
+              </iframe>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-3">
+              <a
+                href={feedbackFormUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1"
+              >
+                <span>Abrir en Google Forms en nueva pestaña</span>
+                <ExternalLink size={14} />
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setIsFeedbackModalOpen(false)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

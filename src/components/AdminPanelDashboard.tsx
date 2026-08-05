@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Usuario, Familia, TareaDiaria, Meta } from '../types';
+import { getFamilyFeedbackFormUrl, setFamilyFeedbackFormUrl } from '../services/googleWorkspace';
 
 interface AdminPanelDashboardProps {
   usuarios: Usuario[];
@@ -13,6 +14,10 @@ interface AdminPanelDashboardProps {
 export default function AdminPanelDashboard({ usuarios, familias, tareas, metas = [], onSelectUser, onOpenGeminiAdvisor }: AdminPanelDashboardProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [exported, setExported] = useState<boolean>(false);
+  const [feedbackFormUrl, setFeedbackUrl] = useState<string>(getFamilyFeedbackFormUrl());
+  const [isEditingFormUrl, setIsEditingFormUrl] = useState<boolean>(false);
+  const [tempFormUrl, setTempFormUrl] = useState<string>(feedbackFormUrl);
+  const [showEmbeddedForm, setShowEmbeddedForm] = useState<boolean>(true);
 
   const totalUsuarios = usuarios.length;
   const totalFamilias = familias.length;
@@ -266,6 +271,95 @@ export default function AdminPanelDashboard({ usuarios, familias, tareas, metas 
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* Google Forms Family Feedback Section */}
+      <section className="bg-white rounded-3xl border border-indigo-50/60 shadow-xl shadow-indigo-100/20 overflow-hidden p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-xl shadow-xs">
+              📝
+            </div>
+            <div>
+              <h3 className="font-sans text-base font-extrabold text-gray-900">Sugerencias y Feedback Familiar (Google Forms)</h3>
+              <p className="font-sans text-xs text-gray-500">Recopila opiniones, ideas y comentarios de los miembros de tu red familiar.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsEditingFormUrl(!isEditingFormUrl)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-sans text-xs font-bold rounded-xl transition-all cursor-pointer"
+            >
+              {isEditingFormUrl ? 'Cancelar' : '⚙️ Configurar Google Form'}
+            </button>
+            <a
+              href={feedbackFormUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-sans text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Abrir Formulario</span>
+              <span className="material-symbols-outlined text-xs">open_in_new</span>
+            </a>
+          </div>
+        </div>
+
+        {isEditingFormUrl && (
+          <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-3 animate-fade-in">
+            <label className="block text-xs font-bold text-slate-700">Enlace o Embed de Google Forms:</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={tempFormUrl}
+                onChange={(e) => setTempFormUrl(e.target.value)}
+                placeholder="https://docs.google.com/forms/d/e/.../viewform?embedded=true"
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-medium text-slate-800 outline-none focus:border-purple-500"
+              />
+              <button
+                onClick={() => {
+                  if (tempFormUrl.trim()) {
+                    setFamilyFeedbackFormUrl(tempFormUrl.trim());
+                    setFeedbackUrl(tempFormUrl.trim());
+                    setIsEditingFormUrl(false);
+                  }
+                }}
+                className="px-4 py-2 bg-purple-600 text-white font-sans text-xs font-bold rounded-xl hover:bg-purple-700 transition-all cursor-pointer"
+              >
+                Guardar Enlace
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              💡 Puedes pegar cualquier enlace público de Google Forms para que los miembros envíen sus sugerencias directamente desde su Perfil.
+            </p>
+          </div>
+        )}
+
+        {/* Embedded Form Preview or Card */}
+        <div className="bg-slate-50/50 rounded-2xl border border-slate-150 p-4 space-y-3">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+            <span>Vista Previa del Formulario en Vivo</span>
+            <button
+              onClick={() => setShowEmbeddedForm(!showEmbeddedForm)}
+              className="text-purple-600 hover:underline cursor-pointer"
+            >
+              {showEmbeddedForm ? 'Ocultar Prevista' : 'Mostrar Prevista'}
+            </button>
+          </div>
+
+          {showEmbeddedForm && (
+            <div className="w-full h-96 rounded-xl border border-slate-200 bg-white overflow-hidden shadow-inner relative">
+              <iframe
+                src={feedbackFormUrl}
+                title="Google Form Feedback Familiar"
+                className="w-full h-full border-0"
+                loading="lazy"
+              >
+                Cargando formulario de Google Forms...
+              </iframe>
+            </div>
+          )}
         </div>
       </section>
     </div>

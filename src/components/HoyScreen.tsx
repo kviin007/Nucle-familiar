@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import EmptyStateIllustration from './EmptyStateIllustration';
 import { TareaDiaria, Usuario, Meta } from '../types';
-import { CheckCircle2, Circle, Target, Calendar, Clock, Sparkles, ChevronRight, ChevronDown, AlertCircle, Plus, Filter, Tag, FolderOpen } from 'lucide-react';
+import { CheckCircle2, Circle, Target, Calendar, Clock, Sparkles, ChevronRight, ChevronDown, AlertCircle, Plus, Filter, Tag, FolderOpen, RefreshCw, ExternalLink, ListTodo, CalendarDays } from 'lucide-react';
+import { fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem } from '../services/googleWorkspace';
 
 interface HoyScreenProps {
   usuarios: Usuario[];
@@ -11,6 +12,8 @@ interface HoyScreenProps {
   metas: Meta[];
   diario?: any[];
   currentUser: Usuario | null;
+  googleAccessToken?: string | null;
+  onConnectGoogleWorkspace?: () => void;
   onToggleTask: (taskId: string) => void;
   onAddTaskClick: () => void;
   onGoToMetas?: () => void;
@@ -22,10 +25,13 @@ export default function HoyScreen({
   tareas = [],
   metas = [],
   currentUser,
+  googleAccessToken,
+  onConnectGoogleWorkspace,
   onToggleTask,
   onAddTaskClick,
   onGoToMetas
 }: HoyScreenProps) {
+  const [activeTab, setActiveTab] = useState<'tareas' | 'calendar'>('tareas');
   const [filterScope, setFilterScope] = useState<'mis_tareas' | 'familia'>('mis_tareas');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
@@ -35,6 +41,40 @@ export default function HoyScreen({
     'Personal': false,
     'Otros': false
   });
+
+  // Google Calendar & Tasks state
+  const [calendarEvents, setCalendarEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [googleTasks, setGoogleTasks] = useState<GoogleTaskItem[]>([]);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState<boolean>(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+
+  const loadGoogleData = async () => {
+    if (!googleAccessToken) return;
+    setIsLoadingCalendar(true);
+    setCalendarError(null);
+    try {
+      const events = await fetchGoogleCalendarEvents(googleAccessToken);
+      setCalendarEvents(events);
+
+      try {
+        const gTasks = await fetchGoogleTasks(googleAccessToken);
+        setGoogleTasks(gTasks);
+      } catch (tErr) {
+        console.warn("Could not load Google Tasks:", tErr);
+      }
+    } catch (err: any) {
+      console.error("Error loading Google Calendar data:", err);
+      setCalendarError(err.message || "Error al sincronizar con Google Calendar");
+    } finally {
+      setIsLoadingCalendar(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'calendar' && googleAccessToken) {
+      loadGoogleData();
+    }
+  }, [activeTab, googleAccessToken]);
 
   const toggleCategory = (cat: string) => {
     setOpenCategories(prev => ({
@@ -142,6 +182,204 @@ export default function HoyScreen({
           </button>
         </div>
       </div>
+
+      {/* VIEW TOGGLE BAR: INTERNAL TASKS VS GOOGLE CALENDAR */}
+      <div className="bg-white p-2 rounded-2xl border border-indigo-50 shadow-sm flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('tareas')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              activeTab === 'tareas'
+                ? 'bg-slate-900 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <ListTodo size={16} />
+            <span>Tareas del Núcleo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('calendar')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              activeTab === 'calendar'
+                ? 'bg-brand-primary text-white shadow-md shadow-indigo-500/20'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays size={16} />
+            <span>Google Calendar & Tasks</span>
+          </button>
+        </div>
+
+        {activeTab === 'calendar' && googleAccessToken && (
+          <button
+            type="button"
+            onClick={loadGoogleData}
+            disabled={isLoadingCalendar}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-brand-primary rounded-xl text-xs font-extrabold transition-all cursor-pointer"
+          >
+            <RefreshCw size={14} className={isLoadingCalendar ? 'animate-spin' : ''} />
+            <span>Sincronizar</span>
+          </button>
+        )}
+      </div>
+
+      {/* GOOGLE CALENDAR TAB CONTENT */}
+      {activeTab === 'calendar' ? (
+        <div className="space-y-6 animate-fade-in">
+          {!googleAccessToken ? (
+            <div className="bg-white p-8 rounded-3xl border border-indigo-100 shadow-xl shadow-indigo-100/30 text-center max-w-lg mx-auto space-y-5">
+              <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-brand-primary flex items-center justify-center mx-auto text-3xl font-black shadow-sm">
+                🗓️
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-xl font-extrabold text-slate-900">Conecta tu Google Calendar</h3>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                  Sincroniza tus eventos y tareas de Google directamente en tu panel de Hoy para no perder de vista tus compromisos.
+                </p>
+              </div>
+
+              {onConnectGoogleWorkspace && (
+                <button
+                  type="button"
+                  onClick={onConnectGoogleWorkspace}
+                  className="w-full bg-white hover:bg-slate-50 text-slate-800 font-extrabold text-xs py-3.5 px-5 rounded-2xl border border-slate-300 shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-3"
+                >
+                  <svg className="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+                  </svg>
+                  <span>Sincronizar con Google Calendar & Tasks</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Event Header & Reload */}
+              <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-indigo-50 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 bg-indigo-50 text-brand-primary rounded-xl">
+                    <Calendar size={18} />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">Eventos de Hoy en Google Calendar</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">Sincronizado desde tu cuenta de Google primaria</p>
+                  </div>
+                </div>
+                <button
+                  onClick={loadGoogleData}
+                  disabled={isLoadingCalendar}
+                  className="p-2 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-brand-primary rounded-xl transition-all cursor-pointer"
+                  title="Recargar eventos"
+                >
+                  <RefreshCw size={16} className={isLoadingCalendar ? 'animate-spin' : ''} />
+                </button>
+              </div>
+
+              {calendarError && (
+                <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2">
+                  <span>⚠️ {calendarError}</span>
+                  <button
+                    onClick={onConnectGoogleWorkspace}
+                    className="px-3 py-1 bg-rose-600 text-white rounded-lg text-[10px] font-bold cursor-pointer"
+                  >
+                    Reconectar
+                  </button>
+                </div>
+              )}
+
+              {/* Events List */}
+              {isLoadingCalendar ? (
+                <div className="bg-white p-8 rounded-3xl border border-indigo-50 text-center space-y-3">
+                  <RefreshCw size={24} className="animate-spin text-brand-primary mx-auto" />
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cargando eventos de Google Calendar...</p>
+                </div>
+              ) : calendarEvents.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl border border-indigo-50 text-center space-y-2">
+                  <p className="text-sm font-bold text-slate-800">📅 No tienes eventos programados en Google Calendar para hoy.</p>
+                  <p className="text-xs text-slate-500">¡Tu agenda de hoy está libre en Google Calendar!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {calendarEvents.map((evt) => {
+                    const startTime = evt.start?.dateTime ? new Date(evt.start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (evt.start?.date || 'Todo el día');
+                    const endTime = evt.end?.dateTime ? new Date(evt.end.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+                    return (
+                      <div key={evt.id} className="bg-white p-5 rounded-2xl border border-indigo-50 shadow-md shadow-indigo-100/20 hover:border-indigo-200 transition-all space-y-3 relative overflow-hidden">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-brand-primary bg-indigo-50 px-2.5 py-0.5 rounded-md inline-block">
+                              Google Calendar
+                            </span>
+                            <h4 className="text-sm font-extrabold text-slate-900 leading-snug">{evt.summary || 'Sin título'}</h4>
+                          </div>
+
+                          {evt.htmlLink && (
+                            <a
+                              href={evt.htmlLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-slate-400 hover:text-brand-primary transition-colors p-1"
+                              title="Abrir en Google Calendar"
+                            >
+                              <ExternalLink size={16} />
+                            </a>
+                          )}
+                        </div>
+
+                        {evt.description && (
+                          <p className="text-xs text-slate-500 line-clamp-2">{evt.description}</p>
+                        )}
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] font-bold text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Clock size={13} className="text-brand-primary" />
+                            <span>{startTime} {endTime ? `- ${endTime}` : ''}</span>
+                          </span>
+
+                          {evt.location && (
+                            <span className="truncate max-w-[140px] text-slate-400">
+                              📍 {evt.location}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Google Tasks Section if available */}
+              {googleTasks.length > 0 && (
+                <div className="space-y-3 pt-4 border-t border-slate-200">
+                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <ListTodo size={16} className="text-brand-primary" />
+                    <span>Tareas de Google Tasks ({googleTasks.length})</span>
+                  </h4>
+                  <div className="bg-white rounded-2xl border border-indigo-50 p-4 space-y-2">
+                    {googleTasks.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-xs font-medium">
+                        <span className={t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-800 font-bold'}>
+                          {t.title}
+                        </span>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${t.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {t.status === 'completed' ? 'Completada' : 'Pendiente'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* REGULAR INTERNAL TASKS & GOALS CONTENT */
+        <>
 
       {/* SECTION 1: METAS POR CUMPLIR */}
       <div className="space-y-4">
@@ -445,6 +683,8 @@ export default function HoyScreen({
           </div>
         )}
       </div>
+      </>
+      )}
     </motion.div>
   );
 }
