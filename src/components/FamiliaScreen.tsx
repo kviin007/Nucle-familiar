@@ -167,7 +167,9 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
                 )}
               </h3>
               <p className="font-sans text-xs text-gray-500 mb-2">
-                {member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Miembro'}
+                {member.role === 'admin' || (isCurrentUser && (currentUser?.role === 'admin' || currentUser?.isAdmin))
+                  ? 'Administrador'
+                  : member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Miembro'}
               </p>
 
               {/* Completion & Points Goal Progress Bar */}

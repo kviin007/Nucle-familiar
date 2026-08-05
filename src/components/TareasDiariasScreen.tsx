@@ -14,7 +14,10 @@ interface TareasDiariasScreenProps {
     estimatedTime: number,
     visible: boolean,
     categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros',
-    esPrioridadAlta?: boolean
+    esPrioridadAlta?: boolean,
+    esCritica?: boolean,
+    configCritica?: any,
+    requiereAppExterna?: boolean
   ) => Promise<void> | void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -40,6 +43,7 @@ export default function TareasDiariasScreen({
   const [categoria, setCategoria] = useState<'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros'>('Hogar');
   const [visibleFamilia, setVisibleFamilia] = useState(true);
   const [esPrioridadAlta, setEsPrioridadAlta] = useState(false);
+  const [requiereAppExterna, setRequiereAppExterna] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categories = ['Todas', 'Hogar', 'Estudio', 'Salud', 'Personal', 'Otros'];
@@ -62,10 +66,14 @@ export default function TareasDiariasScreen({
         tiempoEstimado,
         visibleFamilia,
         categoria,
-        esPrioridadAlta
+        esPrioridadAlta,
+        false,
+        undefined,
+        requiereAppExterna
       );
       showToast("¡Tarea diaria agregada con éxito! ✨", "success");
       setTitulo('');
+      setRequiereAppExterna(false);
       setShowAddModal(false);
     } catch (err) {
       console.error("Error al agregar tarea:", err);
@@ -422,6 +430,26 @@ export default function TareasDiariasScreen({
                     <span>Visible para la familia</span>
                   </label>
                 </div>
+              </div>
+
+              {/* Modo Externo Toggle */}
+              <div className="pt-2">
+                <label className="flex items-start gap-2.5 text-xs font-bold text-slate-700 cursor-pointer bg-indigo-50/70 p-3 rounded-2xl border border-indigo-100 hover:bg-indigo-50 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={requiereAppExterna}
+                    onChange={(e) => setRequiereAppExterna(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 mt-0.5 shrink-0"
+                  />
+                  <div>
+                    <span className="block font-extrabold text-indigo-950">
+                      📱 Esta tarea requiere usar otra app (ej. Duolingo)
+                    </span>
+                    <span className="block text-[11px] text-indigo-700 font-medium mt-0.5 leading-normal">
+                      Activa el temporizador de fondo sincronizado: puedes salir de esta app y el tiempo no se congelará.
+                    </span>
+                  </div>
+                </label>
               </div>
 
               {/* Submit Buttons */}

@@ -64,13 +64,51 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
   const modeType = isReading ? 'lectura' : isDeviceApp ? 'celular' : 'general';
   const isCritical = !!task.es_critica;
 
-  // Timer State
+  const isExternalAppMode = !!task.requiere_app_externa || modeType === 'celular' || isDeviceApp;
+
+  // Storage Keys for External Mode persistence
+  const STORAGE_KEY = `focus_externo_${task.tarea_id}`;
+  const STORAGE_EXTENDED_KEY = `focus_externo_extended_${task.tarea_id}`;
+
+  // Timer & Timestamp State
   const totalDurationSeconds = (task.tiempo_estimado_min || 30) * 60;
-  const [secondsRemaining, setSecondsRemaining] = useState(totalDurationSeconds);
-  const [isActive, setIsActive] = useState(true); // start active by default
-  const [isSpeedy, setIsSpeedy] = useState(false);
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [ambientSound, setAmbientSound] = useState(true);
+
+  const [targetEndTimeMs, setTargetEndTimeMs] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+      const newEndTime = Date.now() + totalDurationSeconds * 1000;
+      localStorage.setItem(STORAGE_KEY, newEndTime.toString());
+      return newEndTime;
+    }
+    return Date.now() + totalDurationSeconds * 1000;
+  });
+
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(() => {
+    const diffMs = targetEndTimeMs - Date.now();
+    return Math.max(0, Math.ceil(diffMs / 1000));
+  });
+
+  const [hasBeenExtended, setHasBeenExtended] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_EXTENDED_KEY) === 'true';
+    }
+    return false;
+  });
+
+  const [isActive, setIsActive] = useState<boolean>(true);
+  const [isSpeedy, setIsSpeedy] = useState<boolean>(false);
+  const [showCelebration, setShowCelebration] = useState<boolean>(false);
+  const [showReturnConfirm, setShowReturnConfirm] = useState<boolean>(false);
+  const [ambientSound, setAmbientSound] = useState<boolean>(true);
+
+  // Reference to prevent duplicate system notifications
+  const notificationSentRef = useRef<boolean>(false);
 
   // 5-Second Hold-to-Exit Safety State
   const [holdProgress, setHoldProgress] = useState(0); // 0 to 100
@@ -103,6 +141,14 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
     { id: 3, text: "Tener un vaso de agua cerca para mantenerme hidratado", checked: true }
   ]);
 
+  // Clean storage helper
+  const cleanExternalStorage = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_EXTENDED_KEY);
+    }
+  };
+
   // Audio player
   const [audioElement] = useState(() => {
     const audio = new Audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3");
@@ -112,14 +158,14 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
   });
 
   useEffect(() => {
-    if (ambientSound && isActive && !showCelebration) {
+    if (ambientSound && isActive && !showCelebration && !showReturnConfirm) {
       audioElement.play().catch(err => {
         console.warn("Autoplay was blocked by browser", err);
       });
     } else {
       audioElement.pause();
     }
-  }, [ambientSound, isActive, showCelebration, audioElement]);
+  }, [ambientSound, isActive, showCelebration, showReturnConfirm, audioElement]);
 
   useEffect(() => {
     return () => {
@@ -127,6 +173,34 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
       if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
     };
   }, [audioElement]);
+
+  // Request Browser Notification Permission for External Mode
+  useEffect(() => {
+    if (isExternalAppMode && typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(err => {
+          console.warn("Permiso de notificación denegado o no soportado:", err);
+        });
+      }
+    }
+  }, [isExternalAppMode]);
+
+  // Send System Notification when time expires
+  const triggerExpirationNotification = () => {
+    if (notificationSentRef.current) return;
+    notificationSentRef.current = true;
+
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(`⏰ ¡Se acabó el tiempo de ${task.titulo}!`, {
+          body: "Vuelve a Núcleo Familiar para confirmar.",
+          icon: "/favicon.ico"
+        });
+      } catch (e) {
+        console.warn("No se pudo enviar notificación del sistema:", e);
+      }
+    }
+  };
 
   // Fetch dynamic content for standard tasks
   useEffect(() => {
@@ -175,36 +249,104 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
     return () => clearInterval(interval);
   }, [modeType, isCritical]);
 
-  // Timer tick
+  // Main Timestamp Timer Tick (comparing Date.now() against targetEndTimeMs)
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
-    if (isActive && secondsRemaining > 0) {
-      const step = isSpeedy ? 60 : 1; 
-      timer = setInterval(() => {
-        setSecondsRemaining(prev => {
-          if (prev <= step) {
-            clearInterval(timer!);
-            handleTimeExpiration();
-            return 0;
+
+    if (isActive && targetEndTimeMs) {
+      const tick = () => {
+        const now = Date.now();
+        const diffMs = targetEndTimeMs - now;
+
+        if (diffMs <= 0) {
+          setSecondsRemaining(0);
+          setIsActive(false);
+          triggerExpirationNotification();
+          handleTimeExpiration(0);
+          if (timer) clearInterval(timer);
+        } else {
+          setSecondsRemaining(Math.ceil(diffMs / 1000));
+          if (isSpeedy) {
+            setTargetEndTimeMs(prev => Math.max(now, prev - 59000));
           }
-          return prev - step;
-        });
-      }, 1000);
-    } else if (secondsRemaining === 0) {
-      handleTimeExpiration();
+        }
+      };
+
+      tick();
+      timer = setInterval(tick, isSpeedy ? 100 : 1000);
     }
 
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isActive, secondsRemaining, isSpeedy]);
+  }, [isActive, targetEndTimeMs, isSpeedy]);
 
-  const handleTimeExpiration = () => {
+  // Handle visibilitychange event when returning to the tab/app
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && targetEndTimeMs) {
+        const now = Date.now();
+        const diffMs = targetEndTimeMs - now;
+        const remainingSec = Math.max(0, Math.ceil(diffMs / 1000));
+        setSecondsRemaining(remainingSec);
+
+        if (now >= targetEndTimeMs) {
+          setIsActive(false);
+          triggerExpirationNotification();
+          setShowReturnConfirm(true);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [targetEndTimeMs, task.titulo]);
+
+  const handleTimeExpiration = (remaining: number = secondsRemaining) => {
     setIsActive(false);
-    const elapsed = totalDurationSeconds - secondsRemaining;
+    const elapsed = totalDurationSeconds - remaining;
     setTimeSpentSec(elapsed > 0 ? elapsed : totalDurationSeconds);
-    setPunctualityPercent(Math.min(100, Math.max(85, Math.round(100 - (secondsRemaining / totalDurationSeconds) * 10))));
+    setPunctualityPercent(Math.min(100, Math.max(85, Math.round(100 - (remaining / totalDurationSeconds) * 10))));
+    
+    if (isExternalAppMode) {
+      setShowReturnConfirm(true);
+    } else {
+      setShowCelebration(true);
+    }
+  };
+
+  const handleExtendTimer = (minsToAdd: number = 5) => {
+    if (hasBeenExtended) return;
+
+    const extraMs = minsToAdd * 60 * 1000;
+    const newEndTime = Date.now() + extraMs;
+
+    setTargetEndTimeMs(newEndTime);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, newEndTime.toString());
+      localStorage.setItem(STORAGE_EXTENDED_KEY, 'true');
+    }
+    setHasBeenExtended(true);
+    notificationSentRef.current = false;
+    setShowReturnConfirm(false);
+    setIsActive(true);
+  };
+
+  const handleConfirmTaskCompletion = () => {
+    setShowReturnConfirm(false);
     setShowCelebration(true);
+  };
+
+  const handleCloseAndClean = () => {
+    cleanExternalStorage();
+    onClose();
+  };
+
+  const handleCompleteAndClean = () => {
+    cleanExternalStorage();
+    onComplete(task.tarea_id);
   };
 
   // 5-Second Press-and-Hold Safety Exit Handlers
@@ -294,7 +436,7 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
                   {ambientSound ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 </button>
                 <button 
-                  onClick={onClose}
+                  onClick={handleCloseAndClean}
                   className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
                   title="Cerrar vista"
                 >
@@ -302,6 +444,23 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
                 </button>
               </div>
             </div>
+
+            {/* External App Mode Banner */}
+            {isExternalAppMode && (
+              <div className="mx-4 md:mx-6 mt-3.5 p-3.5 bg-indigo-950/90 border border-indigo-500/40 rounded-2xl flex items-start gap-3 text-left shadow-lg">
+                <div className="w-8 h-8 rounded-xl bg-brand-primary text-white flex items-center justify-center shrink-0 font-bold text-base shadow-sm">
+                  📱
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-sans text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
+                    Modo Externo Activo
+                  </h4>
+                  <p className="font-sans text-xs text-indigo-100/95 mt-0.5 leading-relaxed">
+                    Puedes salir de la app para completar esta tarea. El tiempo sigue corriendo aunque cambies de aplicación. Vuelve antes de que se agote para confirmar que la completaste.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* CRITICAL MISSION MODE SCREEN */}
             {isCritical ? (
@@ -553,7 +712,7 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
             </div>
 
             <button
-              onClick={handleCompleteTask}
+              onClick={handleCompleteAndClean}
               className="w-full py-4 rounded-2xl bg-brand-primary hover:bg-brand-dark text-white font-extrabold text-xs uppercase tracking-wider transition-all shadow-lg shadow-indigo-500/20 active:scale-95 cursor-pointer"
             >
               Registrar Logro en el Tablero
@@ -561,6 +720,56 @@ export default function FocusModeOverlay({ task, onClose, onComplete }: FocusMod
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Return Confirmation Modal for External App Mode */}
+      {showReturnConfirm && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[60] flex items-center justify-center p-4 select-none">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-slate-900 border border-indigo-500/40 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center space-y-5 relative overflow-hidden"
+          >
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center mx-auto text-3xl font-black">
+              ⏰
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-950 border border-indigo-800 px-3 py-1 rounded-full inline-block">
+                Modo Externo Finalizado
+              </span>
+              <h3 className="text-xl font-extrabold text-white">
+                ¿Completaste "{task.titulo}"?
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                El tiempo asignado a esta tarea ha transcurrido. Confirma tu logro para guardar tus puntos y mantener tu racha.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button
+                onClick={handleConfirmTaskCompletion}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-sans text-xs font-black uppercase tracking-wider py-3.5 rounded-2xl shadow-lg shadow-emerald-900/30 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <CheckCircle size={18} />
+                <span>Sí, la completé</span>
+              </button>
+
+              {!hasBeenExtended ? (
+                <button
+                  onClick={() => handleExtendTimer(5)}
+                  className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-sans text-xs font-bold py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Clock size={16} />
+                  <span>No, necesito más tiempo (+5 min)</span>
+                </button>
+              ) : (
+                <div className="text-[11px] font-semibold text-rose-400 bg-rose-950/60 border border-rose-900/60 rounded-xl py-2 px-3">
+                  ⚠️ Límite de 1 extensión por tarea alcanzado
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

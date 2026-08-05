@@ -134,7 +134,7 @@ async function startServer() {
 
   // API Route: Create Task
   app.post("/api/tasks/create", async (req, res) => {
-    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id, categoria, es_prioridad_alta, es_critica, config_critica } = req.body;
+    const { titulo, usuario_id, hora_programada, tiempo_estimado_min, visible_familia, meta_id, categoria, es_prioridad_alta, es_critica, config_critica, requiere_app_externa } = req.body;
     if (!titulo || !usuario_id) {
       return res.status(400).json({ error: "Título y destinatario son obligatorios." });
     }
@@ -149,7 +149,8 @@ async function startServer() {
         categoria,
         es_prioridad_alta,
         es_critica,
-        config_critica
+        config_critica,
+        requiere_app_externa
       });
       res.json(result);
     } catch (e: any) {

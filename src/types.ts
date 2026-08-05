@@ -90,6 +90,7 @@ export interface TareaDiaria {
   origen?: 'manual' | 'meta_automatica' | 'consecuencia' | 'admin_asignada';
   ultima_actualizacion: string; // ISO string
   visible_familia: boolean;
+  requiere_app_externa?: boolean;
   puntos?: number;
 }
 

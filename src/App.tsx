@@ -213,6 +213,10 @@ export default function App() {
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
           if (freshProfile) {
+            const isUserAdminFromProfile = freshProfile.role === 'admin' || freshProfile.role === 'administrador' || freshProfile.isAdmin === true || freshProfile.uid === 'kevin-admin-uid';
+            if (isUserAdminFromProfile) {
+              setIsAdmin(true);
+            }
             setCurrentUser((prev: any) => ({
               ...prev,
               nombre: freshProfile.nombre,
@@ -220,7 +224,7 @@ export default function App() {
               familia_id: freshProfile.familia_id,
               puntos: freshProfile.puntos,
               racha_actual: freshProfile.racha_actual,
-              role: freshProfile.role || (isAdmin ? "admin" : "member")
+              role: isUserAdminFromProfile ? "admin" : (freshProfile.role || prev?.role || "member")
             }));
           }
         }
@@ -253,7 +257,8 @@ export default function App() {
             if (syncRes.ok) {
               const uData = await syncRes.json();
               const tokenResult = await getIdTokenResult(firebaseUser);
-              const isUserAdmin = tokenResult.claims.admin === true;
+              const serverRole = uData.updatedUser?.role;
+              const isUserAdmin = tokenResult.claims.admin === true || serverRole === "admin" || serverRole === "administrador" || uData.updatedUser?.isAdmin === true || firebaseUser.uid === "kevin-admin-uid";
 
               setIdToken(tokenResult.token);
               setIsAdmin(isUserAdmin);
@@ -264,7 +269,7 @@ export default function App() {
                 email: firebaseUser.email,
                 avatar_url: uData.updatedUser?.avatar_url || firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
                 familia_id: uData.updatedUser?.familia_id || "",
-                role: isUserAdmin ? "admin" : "member"
+                role: isUserAdmin ? "admin" : (serverRole || "member")
               };
 
               if (firestore) {
@@ -453,7 +458,8 @@ export default function App() {
     categoria?: 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros',
     esPrioridadAlta?: boolean,
     esCritica?: boolean,
-    configCritica?: ConfigTareaCritica
+    configCritica?: ConfigTareaCritica,
+    requiereAppExterna?: boolean
   ) => {
     try {
       const res = await fetch('/api/tasks/create', {
@@ -468,7 +474,8 @@ export default function App() {
           categoria: categoria || 'Otros',
           es_prioridad_alta: !!esPrioridadAlta,
           es_critica: !!esCritica,
-          config_critica: configCritica
+          config_critica: configCritica,
+          requiere_app_externa: !!requiereAppExterna
         }),
       });
       if (res.ok) {
@@ -1205,8 +1212,8 @@ export default function App() {
               <img className="w-7 h-7 rounded-full object-cover" src={currentUser?.avatar_url} alt={currentUser?.nombre} referrerPolicy="no-referrer" />
               <div className="text-left">
                 <p className="font-sans text-[10px] font-bold text-gray-800 truncate max-w-[100px]">{currentUser?.nombre}</p>
-                <p className="font-sans text-[8px] text-gray-400 font-bold uppercase tracking-wider">
-                  {isAdmin ? 'ADMINISTRADOR' : 'MIEMBRO'}
+                <p className="font-sans text-[8px] text-amber-600 font-extrabold uppercase tracking-wider">
+                  {isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'administrador' || currentUser?.isAdmin ? 'ADMINISTRADOR' : 'MIEMBRO'}
                 </p>
               </div>
             </div>

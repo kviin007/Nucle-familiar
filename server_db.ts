@@ -480,7 +480,8 @@ export const dbService = {
       tiempo_estimado_min: Number(task.tiempo_estimado_min) || 30,
       estado: "pendiente",
       ultima_actualizacion: new Date().toISOString(),
-      visible_familia: task.visible_familia !== false
+      visible_familia: task.visible_familia !== false,
+      requiere_app_externa: !!task.requiere_app_externa
     };
 
     if (isFirestoreEnabled && db) {
@@ -1118,7 +1119,8 @@ export const dbService = {
         await db.collection("familias").doc(familia_id).set(newFamily);
         // Link user to this family (use set with merge: true so it creates user doc if missing)
         await db.collection("usuarios").doc(uid).set({
-          familia_id
+          familia_id,
+          role: "admin"
         }, { merge: true });
         return { success: true, newFamily };
       } catch (e) {
@@ -1130,16 +1132,18 @@ export const dbService = {
     const userIndex = localDatabase.usuarios.findIndex(u => u.uid === uid);
     if (userIndex !== -1) {
       localDatabase.usuarios[userIndex].familia_id = familia_id;
+      (localDatabase.usuarios[userIndex] as any).role = "admin";
     } else {
       localDatabase.usuarios.push({
         uid,
-        nombre: "Miembro de la Familia",
+        nombre: "Administrador de la Familia",
         avatar_url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
         familia_id,
         racha_actual: 0,
         puntos: 0,
+        role: "admin",
         configuracion_privacidad: { visible_familia_por_defecto: true }
-      });
+      } as any);
     }
     return { success: true, newFamily };
   },
