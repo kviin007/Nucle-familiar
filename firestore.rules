@@ -42,7 +42,12 @@ service cloud.firestore {
 
     // Users Collection Rules
     match /usuarios/{userId} {
-      allow read, create, update: if isAuthenticated();
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        !('isAdmin' in request.resource.data) ||
+        (resource != null && 'isAdmin' in resource.data && request.resource.data.isAdmin == resource.data.isAdmin) ||
+        request.auth.token.admin == true
+      );
       allow delete: if isAdmin();
     }
 

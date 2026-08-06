@@ -1,33 +1,15 @@
+import "dotenv/config";
 import { initializeApp, getApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { TareaDiaria, Meta, DiarioEntrada, Usuario, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario } from "./src/types";
 
 // Base sample datasets (Empty from scratch for real production)
-export const initialUsuarios: Usuario[] = [
-  {
-    uid: "kevin-admin-uid",
-    nombre: "Kevin (Admin)",
-    avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop",
-    familia_id: "fam_kevin_admin",
-    racha_actual: 5,
-    puntos: 150,
-    configuracion_privacidad: { visible_familia_por_defecto: true },
-    role: "admin",
-    email: "kevin@familia.com"
-  } as any
-];
+export const initialUsuarios: Usuario[] = [];
 export const initialMetas: Meta[] = [];
 export const initialTareas: TareaDiaria[] = [];
 export const initialDiario: DiarioEntrada[] = [];
-export const initialFamilias: Familia[] = [
-  {
-    familia_id: "fam_kevin_admin",
-    nombre: "Familia Admin",
-    codigo_invitacion: "ADMIN123",
-    miembros: ["kevin-admin-uid"]
-  }
-];
+export const initialFamilias: Familia[] = [];
 
 // In-Memory fallback state
 let localDatabase: {
@@ -46,32 +28,25 @@ let localDatabase: {
   tareas: [...initialTareas],
   diario: [...initialDiario],
   familias: [...initialFamilias],
-  consecuenciasPlantillas: [
-    {
-      consecuencia_id: "plantilla_1",
-      familia_id: "fam_kevin_admin",
-      titulo: "Lavar los platos de la cena",
-      descripcion: "Responsabilidad extra por no haber completado la meta diaria",
-      categoria: "Hogar",
-      tiempo_estimado_min: 20,
-      creado_por: "kevin-admin-uid"
-    }
-  ],
-  recompensasPlantillas: [
-    {
-      recompensa_id: "recompensa_1",
-      familia_id: "fam_kevin_admin",
-      titulo: "Elegir la película del fin de semana",
-      descripcion: "Recompensa por cumplir el 100% de tus metas esta semana",
-      tipo: "generica"
-    }
-  ],
+  consecuenciasPlantillas: [],
+  recompensasPlantillas: [],
   consecuenciasPendientes: [],
   desbloqueosUsuarios: []
 };
 
 let db: Firestore | null = null;
 let isFirestoreEnabled = false;
+let lastFirestoreError: { message: string; code?: string; stack?: string } | null = null;
+
+// Log current environment variable status at startup
+const rawProjectId = process.env.VITE_FIREBASE_PROJECT_ID;
+const maskedProjectId = rawProjectId
+  ? (rawProjectId.length > 6 
+      ? `${rawProjectId.slice(0, 3)}***${rawProjectId.slice(-3)}` 
+      : `${rawProjectId.slice(0, 1)}***`)
+  : "(VACÍO / UNDEFINED)";
+
+console.log(`[Firebase Startup Check] process.env.VITE_FIREBASE_PROJECT_ID = ${maskedProjectId}`);
 
 // Local in-memory stores for steps and game progress
 let localSteps: { usuario_id: string; pasos: number; fecha: string }[] = [];
@@ -90,95 +65,91 @@ try {
   }
   db = getFirestore();
   isFirestoreEnabled = true;
-  console.log("[Firebase Admin] Initialized successfully. Firestore is active.");
+  console.log("[Firebase Admin] Initialized successfully. Testing Firestore connectivity...");
   
   // Seed the Firestore instance with initial dataset if empty
   seedFirestore().then(() => {
-    ensureKevinAdminExists();
+    ensureAdminClaimsForUid("0OxCaUlLcrgXeWLKZwJsDBO2wBV2");
+  }).catch((err) => {
+    handleFirestoreError(err, "seedFirestore");
   });
-} catch (e) {
-  console.log("[Firebase Admin] Initialization bypassed or failed. Using locally simulated in-memory state:", e);
+} catch (e: any) {
+  isFirestoreEnabled = false;
+  lastFirestoreError = {
+    message: e?.message || String(e),
+    code: e?.code || "INIT_FAILED",
+    stack: e?.stack
+  };
+  console.error("[Firebase Admin Initialization Error DETAILS]:", {
+    message: e?.message,
+    code: e?.code,
+    stack: e?.stack
+  });
+}
+
+// Ensure specific UID has Firebase Auth Admin Claims and Firestore profile updated
+async function ensureAdminClaimsForUid(uid: string) {
+  if (!isFirestoreEnabled || !db) return;
+  try {
+    const authInstance = getAuth();
+    let userRecord;
+    try {
+      userRecord = await authInstance.getUser(uid);
+    } catch (e) {
+      console.log(`[Firebase Admin] User UID ${uid} not yet present in Firebase Auth. Claims will be assigned upon first endpoint call.`);
+      return;
+    }
+
+    await authInstance.setCustomUserClaims(uid, { admin: true });
+    console.log(`[Firebase Admin] Custom Claim { admin: true } set successfully for UID: ${uid} (${userRecord.email || 'No email'})`);
+
+    const userRef = db.collection("usuarios").doc(uid);
+    await userRef.set({
+      isAdmin: true,
+      role: "admin"
+    }, { merge: true });
+
+    await db.collection("system_config").doc("admin_setup").set({
+      primer_admin_asignado: true,
+      admin_uid: uid,
+      admin_email: userRecord.email || "",
+      asignado_en: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    console.log(`[Firebase Admin] Admin profile and config updated for UID: ${uid}`);
+  } catch (err) {
+    console.error(`[Firebase Admin Error - ensureAdminClaimsForUid]`, err);
+  }
 }
 
 // Function to handle Firestore errors and fallback gracefully
 function handleFirestoreError(err: any, context: string) {
   const errMsg = String(err?.message || err);
+  lastFirestoreError = {
+    message: err?.message || errMsg,
+    code: err?.code !== undefined ? String(err.code) : "FIRESTORE_ERROR",
+    stack: err?.stack
+  };
+
+  console.error(`[Firestore Error - ${context}] DETALLES COMPLETOS:`, {
+    message: err?.message || errMsg,
+    code: err?.code,
+    stack: err?.stack
+  });
+
   if (
     errMsg.includes("PERMISSION_DENIED") ||
     errMsg.includes("has not been used in project") ||
     errMsg.includes("disabled") ||
     errMsg.includes("PROJECT_NOT_FOUND") ||
     errMsg.includes("Cloud Firestore API") ||
+    errMsg.includes("Could not load the default credentials") ||
     err?.code === 7
   ) {
     if (isFirestoreEnabled) {
       console.warn(`[Firebase Admin] Cloud Firestore API is disabled or inaccessible in GCP project. Automatically falling back to local in-memory database (${context}).`);
       isFirestoreEnabled = false;
     }
-  } else {
-    console.error(`[Firestore Error - ${context}]`, err);
-  }
-}
-
-// Function to ensure Kevin Admin user exists in Firebase Auth with custom claims
-async function ensureKevinAdminExists() {
-  if (!isFirestoreEnabled || !db) return;
-  try {
-    const authInstance = getAuth();
-    let userRecord;
-    try {
-      userRecord = await authInstance.getUserByEmail("kevin@familia.com");
-      console.log("[Firebase Admin] Kevin admin user already exists in Firebase Auth:", userRecord.uid);
-    } catch (err: any) {
-      if (err.code === "auth/user-not-found" || err.message?.includes("user-not-found")) {
-        console.log("[Firebase Admin] Creating Kevin admin user in Firebase Auth...");
-        userRecord = await authInstance.createUser({
-          email: "kevin@familia.com",
-          password: "123456",
-          displayName: "Kevin (Admin)",
-          photoURL: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop"
-        });
-        console.log("[Firebase Admin] Kevin admin user created successfully!");
-      } else {
-        throw err;
-      }
-    }
-
-    if (userRecord && isFirestoreEnabled && db) {
-      // Set Custom Claims for admin
-      await authInstance.setCustomUserClaims(userRecord.uid, { admin: true });
-      console.log("[Firebase Admin] Admin claim successfully set for Kevin.");
-
-      // Ensure user is in firestore
-      const userRef = db.collection("usuarios").doc(userRecord.uid);
-      await userRef.set({
-        uid: userRecord.uid,
-        nombre: "Kevin (Admin)",
-        avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop",
-        familia_id: "fam_kevin_admin",
-        racha_actual: 5,
-        puntos: 150,
-        configuracion_privacidad: { visible_familia_por_defecto: true },
-        role: "admin",
-        email: "kevin@familia.com"
-      }, { merge: true });
-      console.log("[Firebase Admin] Kevin admin user profile created/merged in Firestore.");
-
-      // Ensure family is in firestore
-      const familyRef = db.collection("familias").doc("fam_kevin_admin");
-      const familySnap = await familyRef.get();
-      if (!familySnap.exists) {
-        await familyRef.set({
-          familia_id: "fam_kevin_admin",
-          nombre: "Familia Admin",
-          codigo_invitacion: "ADMIN123",
-          miembros: [userRecord.uid]
-        });
-        console.log("[Firebase Admin] Admin family created in Firestore.");
-      }
-    }
-  } catch (err) {
-    handleFirestoreError(err, "ensureKevinAdminExists");
   }
 }
 
@@ -235,6 +206,64 @@ export async function verifyUserAdmin(idToken: string): Promise<boolean> {
 // Primary DB Service Adapter API
 export const dbService = {
   getIsFirestoreEnabled: () => isFirestoreEnabled,
+  getFirestoreLastError: () => lastFirestoreError,
+
+  assignFirstAdmin: async (targetUid: string) => {
+    if (isFirestoreEnabled && db) {
+      try {
+        const configRef = db.collection("system_config").doc("admin_setup");
+        const configSnap = await configRef.get();
+        if (configSnap.exists && configSnap.data()?.primer_admin_asignado === true && configSnap.data()?.admin_uid !== targetUid && targetUid !== "0OxCaUlLcrgXeWLKZwJsDBO2wBV2") {
+          return { success: false, code: "ALREADY_ASSIGNED", error: "El primer administrador ya ha sido asignado anteriormente en el sistema." };
+        }
+
+        const authInstance = getAuth();
+        let userRecord;
+        try {
+          userRecord = await authInstance.getUser(targetUid);
+        } catch (e: any) {
+          return { success: false, code: "USER_NOT_FOUND", error: `No se encontró ningún usuario registrado en Firebase Auth con el UID: ${targetUid}` };
+        }
+
+        // Set Custom Claim { admin: true }
+        await authInstance.setCustomUserClaims(targetUid, { admin: true });
+
+        // Update Firestore profile
+        const userRef = db.collection("usuarios").doc(targetUid);
+        await userRef.set({
+          isAdmin: true,
+          role: "admin"
+        }, { merge: true });
+
+        // Mark admin setup complete
+        await configRef.set({
+          primer_admin_asignado: true,
+          admin_uid: targetUid,
+          admin_email: userRecord.email || "",
+          asignado_en: FieldValue.serverTimestamp()
+        });
+
+        return {
+          success: true,
+          message: `Claims de administrador asignados con éxito al usuario ${userRecord.email || targetUid}`,
+          uid: targetUid,
+          email: userRecord.email
+        };
+      } catch (err: any) {
+        console.error("[assignFirstAdmin Error]", err);
+        return { success: false, error: err.message || "Error al asignar administrador inicial." };
+      }
+    }
+
+    // Local fallback
+    const userIndex = localDatabase.usuarios.findIndex(u => u.uid === targetUid);
+    if (userIndex !== -1) {
+      localDatabase.usuarios[userIndex].role = "admin";
+      (localDatabase.usuarios[userIndex] as any).isAdmin = true;
+      return { success: true, message: "Administrador asignado en estado local.", uid: targetUid };
+    }
+    return { success: false, error: "Usuario no encontrado en la base local." };
+  },
 
   getState: async () => {
     if (isFirestoreEnabled && db) {

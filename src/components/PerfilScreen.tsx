@@ -66,6 +66,61 @@ export default function PerfilScreen({
   const [canInstallPwa, setCanInstallPwa] = useState<boolean>(false);
   const [alreadyInstalledPwa, setAlreadyInstalledPwa] = useState<boolean>(false);
 
+  // Admin Setup State
+  const [setupSecret, setSetupSecret] = useState('nucleo-setup-admin-2026');
+  const [isAssigningAdmin, setIsAssigningAdmin] = useState(false);
+  const [adminSetupStatus, setAdminSetupStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' });
+  const [copiedUid, setCopiedUid] = useState(false);
+
+  const handleCopyUid = () => {
+    if (!currentUser?.uid) return;
+    navigator.clipboard.writeText(currentUser.uid);
+    setCopiedUid(true);
+    showToast("UID copiado al portapapeles 📋", "info");
+    setTimeout(() => setCopiedUid(false), 2500);
+  };
+
+  const handleAssignFirstAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser?.uid) return;
+    setIsAssigningAdmin(true);
+    setAdminSetupStatus({ type: 'idle', message: '' });
+
+    try {
+      const res = await fetch('/api/admin/assign-first-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          secret: setupSecret.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAdminSetupStatus({
+          type: 'success',
+          message: `¡Rol Administrador asignado con éxito a ${data.email || currentUser.uid}! Cierra sesión y vuelve a entrar para actualizar el Custom Claim.`
+        });
+        showToast("¡Asignación de administrador completada con éxito! 👑", "success");
+      } else {
+        setAdminSetupStatus({
+          type: 'error',
+          message: data.error || "No se pudo realizar la asignación de administrador."
+        });
+        showToast(data.error || "Error al asignar administrador.", "error");
+      }
+    } catch (err: any) {
+      setAdminSetupStatus({
+        type: 'error',
+        message: err?.message || "Error de conexión con el servidor."
+      });
+      showToast("Error de conexión al asignar administrador.", "error");
+    } finally {
+      setIsAssigningAdmin(false);
+    }
+  };
+
   useEffect(() => {
     setAlreadyInstalledPwa(isPwaInstalled());
     const unsub = subscribePwaInstall((canInstall) => {
@@ -355,28 +410,6 @@ export default function PerfilScreen({
               </div>
             </div>
 
-            {/* QUICK GOOGLE FORM FEEDBACK BUTTON */}
-            <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="p-2 bg-purple-50 text-purple-600 rounded-xl">
-                  <MessageSquarePlus size={18} />
-                </span>
-                <div>
-                  <h4 className="text-xs font-black text-slate-900">Sugerencias y Comentarios</h4>
-                  <p className="text-[10px] text-slate-500">Envía tus ideas para mejorar el núcleo familiar.</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsFeedbackModalOpen(true)}
-                className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-              >
-                <span>Enviar Sugerencia (Google Form)</span>
-                <ExternalLink size={14} />
-              </button>
-            </div>
-
             {/* FCM & WEB PUSH NOTIFICATIONS CARD */}
             <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
@@ -487,6 +520,74 @@ export default function PerfilScreen({
                     • <strong>iPhone / iPad (Safari):</strong> Toca el botón <strong>Compartir (⎘)</strong> y elige <strong>"Agregar a inicio" (➕)</strong>.
                   </p>
                 </div>
+              )}
+            </div>
+
+            {/* ADMIN INITIALIZATION CARD */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield size={18} className="text-amber-500" />
+                  <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Identificación y Administrador</h4>
+                </div>
+                {isAdmin ? (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-300">
+                    👑 Admin Verificado
+                  </span>
+                ) : (
+                  <span className="bg-slate-100 text-slate-600 text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border border-slate-200">
+                    Miembro Estándar
+                  </span>
+                )}
+              </div>
+
+              {/* User UID info */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Tu UID en Firebase:</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyUid}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedUid ? <Check size={12} className="text-emerald-600" /> : null}
+                    {copiedUid ? 'Copiado' : 'Copiar UID'}
+                  </button>
+                </div>
+                <p className="font-mono text-[11px] font-semibold text-slate-800 select-all break-all bg-white p-2 rounded-xl border border-slate-200">
+                  {currentUser?.uid || 'No autenticado'}
+                </p>
+              </div>
+
+              {/* One-Time First Admin Assign Form */}
+              {!isAdmin && (
+                <form onSubmit={handleAssignFirstAdmin} className="pt-2 border-t border-slate-100 space-y-2">
+                  <p className="text-[11px] text-slate-600 font-medium leading-snug">
+                    ¿Esta es la primera configuración? Asigna el rol de Administrador a esta cuenta ingresando el secreto de setup:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={setupSecret}
+                      onChange={(e) => setSetupSecret(e.target.value)}
+                      placeholder="Secreto (ej. FIRST_ADMIN_SETUP_SECRET)"
+                      className="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isAssigningAdmin || !setupSecret.trim()}
+                      className="px-3 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-amber-400 font-extrabold text-xs rounded-xl shadow transition-all cursor-pointer whitespace-nowrap flex items-center gap-1"
+                    >
+                      <Shield size={14} />
+                      {isAssigningAdmin ? 'Asignando...' : 'Asignar Admin'}
+                    </button>
+                  </div>
+                  {adminSetupStatus.message && (
+                    <div className={`p-2.5 rounded-xl text-[11px] font-semibold leading-tight ${adminSetupStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                      {adminSetupStatus.message}
+                    </div>
+                  )}
+                </form>
               )}
             </div>
           </div>
@@ -675,65 +776,6 @@ export default function PerfilScreen({
       {activeTab === 'codigo' && isAdmin && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <CodeExporterScreen />
-        </div>
-      )}
-
-      {/* GOOGLE FORM FEEDBACK MODAL */}
-      {isFeedbackModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-indigo-100 overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-5 bg-gradient-to-r from-purple-700 to-indigo-800 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <MessageSquarePlus size={20} />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-base">Feedback y Sugerencias de la Familia</h3>
-                  <p className="text-[11px] text-purple-200">Formulario Oficial de Google Forms</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsFeedbackModalOpen(false)}
-                className="p-1.5 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Modal Body with embedded Google Form */}
-            <div className="flex-1 p-4 bg-slate-50 overflow-hidden min-h-[420px]">
-              <iframe
-                src={feedbackFormUrl}
-                title="Google Form Sugerencias"
-                className="w-full h-full min-h-[400px] rounded-2xl border border-slate-200 bg-white"
-                loading="lazy"
-              >
-                Cargando formulario de sugerencias...
-              </iframe>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-3">
-              <a
-                href={feedbackFormUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1"
-              >
-                <span>Abrir en Google Forms en nueva pestaña</span>
-                <ExternalLink size={14} />
-              </a>
-
-              <button
-                type="button"
-                onClick={() => setIsFeedbackModalOpen(false)}
-                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl cursor-pointer"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

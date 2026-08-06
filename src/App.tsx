@@ -160,6 +160,7 @@ export default function App() {
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(getGoogleToken());
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [isFirestoreActive, setIsFirestoreActive] = useState<boolean>(true);
+  const [firestoreErrorDetails, setFirestoreErrorDetails] = useState<string | null>(null);
 
   // Periodic health check for Firestore backend status (every 2 minutes)
   useEffect(() => {
@@ -169,6 +170,16 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           setIsFirestoreActive(!!data.isFirestoreEnabled);
+          
+          if (data.lastError) {
+            const errStr = typeof data.lastError === 'string' 
+              ? data.lastError 
+              : `${data.lastError.message || JSON.stringify(data.lastError)}${data.lastError.code ? ` (Code: ${data.lastError.code})` : ''}`;
+            setFirestoreErrorDetails(errStr);
+            console.error('[DIAGNÓSTICO FIRESTORE] Error detectado en servidor:', data.lastError, 'Project ID:', data.projectIdMasked);
+          } else {
+            setFirestoreErrorDetails(null);
+          }
         }
       } catch (err) {
         console.warn("Firestore health check error:", err);
@@ -348,10 +359,6 @@ export default function App() {
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
           if (freshProfile) {
-            const isUserAdminFromProfile = freshProfile.isAdmin === true || freshProfile.uid === 'kevin-admin-uid';
-            if (isUserAdminFromProfile) {
-              setIsAdmin(true);
-            }
             setCurrentUser((prev: any) => ({
               ...prev,
               nombre: freshProfile.nombre,
@@ -397,7 +404,7 @@ export default function App() {
               const uData = await syncRes.json();
               const tokenResult = await getIdTokenResult(firebaseUser);
               const serverRole = uData.updatedUser?.role;
-              const isUserAdmin = tokenResult.claims.admin === true || uData.updatedUser?.isAdmin === true || firebaseUser.uid === "kevin-admin-uid";
+              const isUserAdmin = tokenResult.claims.admin === true;
 
               setIdToken(tokenResult.token);
               setIsAdmin(isUserAdmin);
@@ -737,7 +744,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          familia_id: currentUser.familia_id || "fam_kevin_admin",
+          familia_id: currentUser.familia_id || "",
           creado_por: currentUser.uid,
           ...template
         })
@@ -757,7 +764,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          familia_id: currentUser.familia_id || "fam_kevin_admin",
+          familia_id: currentUser.familia_id || "",
           ...template
         })
       });
@@ -828,7 +835,7 @@ export default function App() {
       const res = await fetch('/api/goals/evaluate-compliance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ familia_id: currentUser?.familia_id || "fam_kevin_admin" })
+        body: JSON.stringify({ familia_id: currentUser?.familia_id || "" })
       });
       if (res.ok) {
         await fetchState();
@@ -1585,17 +1592,22 @@ export default function App() {
             )}
 
             {!isFirestoreActive && (
-              <div className="mb-6 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 flex items-center gap-3 shadow-sm text-left">
-                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm">
+              <div className="mb-6 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm text-left">
+                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm mt-0.5">
                   <span className="material-symbols-outlined text-2xl">cloud_off</span>
                 </div>
-                <div>
+                <div className="flex-1">
                   <h3 className="font-sans text-sm font-extrabold text-rose-950">
                     Almacenamiento Cloud en Firestore no activo
                   </h3>
                   <p className="font-sans text-xs text-rose-900/90 mt-0.5 leading-relaxed">
-                    Atención: La base de datos Firestore no se encuentra disponible. Los datos que ingreses no se guardarán de forma permanente en la nube y se perderán al recargar.
+                    Atención: La base de datos Firestore no se encuentra disponible. Los datos que ingreses se gestionarán localmente.
                   </p>
+                  {firestoreErrorDetails && (
+                    <div className="mt-2 p-2.5 bg-rose-100/90 border border-rose-300 rounded-xl font-mono text-[11px] text-rose-950 font-bold break-all">
+                      <span className="text-rose-700 font-extrabold">Diagnóstico del error:</span> {firestoreErrorDetails}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

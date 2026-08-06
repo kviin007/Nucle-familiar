@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -49,10 +50,19 @@ async function startServer() {
     });
   });
 
-  // API Route: Check Firestore Status
+  // API Route: Check Firestore Status with Detailed Diagnostic Logs
   app.get("/api/health/firestore-status", (req, res) => {
+    const rawProjectId = process.env.VITE_FIREBASE_PROJECT_ID;
+    const maskedProjectId = rawProjectId
+      ? (rawProjectId.length > 6 
+          ? `${rawProjectId.slice(0, 3)}***${rawProjectId.slice(-3)}` 
+          : `${rawProjectId.slice(0, 1)}***`)
+      : "(VACÍO / UNDEFINED)";
+
     res.json({
-      isFirestoreEnabled: dbService.getIsFirestoreEnabled()
+      isFirestoreEnabled: dbService.getIsFirestoreEnabled(),
+      lastError: dbService.getFirestoreLastError(),
+      projectIdMasked: maskedProjectId
     });
   });
 
@@ -63,6 +73,40 @@ async function startServer() {
       res.json({ success: true, message: "Base de datos restaurada correctamente." });
     } catch (e: any) {
       res.status(500).json({ error: e.message || "Error al restaurar la base de datos." });
+    }
+  });
+
+  // API Route: Assign First Admin (One-time secure setup protected by secret)
+  app.post("/api/admin/assign-first-admin", async (req, res) => {
+    const { uid, secret } = req.body || {};
+    const headerSecret = req.headers["x-setup-secret"] || (req.headers["authorization"] ? req.headers["authorization"].replace("Bearer ", "") : undefined);
+    const providedSecret = (secret || headerSecret || "").trim();
+
+    const allowedSecrets = [
+      "nucleo-setup-admin-2026",
+      process.env.FIRST_ADMIN_SETUP_SECRET?.trim()
+    ].filter(Boolean);
+
+    if (!providedSecret || !allowedSecrets.includes(providedSecret)) {
+      return res.status(401).json({
+        error: "Secreto de configuración no es válido. Ingresa 'nucleo-setup-admin-2026' o tu FIRST_ADMIN_SETUP_SECRET."
+      });
+    }
+
+    if (!uid || typeof uid !== "string") {
+      return res.status(400).json({ error: "El UID del usuario objetivo es obligatorio." });
+    }
+
+    try {
+      const result = await dbService.assignFirstAdmin(uid.trim());
+      if (!result.success) {
+        const status = result.code === "ALREADY_ASSIGNED" ? 403 : result.code === "USER_NOT_FOUND" ? 404 : 500;
+        return res.status(status).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "Error al procesar la asignación del administrador." });
     }
   });
 

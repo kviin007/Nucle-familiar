@@ -260,7 +260,7 @@ export default function MetasScreen({
   const categories: string[] = ['Todos', ...allCategories];
 
   // Filter metas by Tab and Category
-  const currentFamilyId = currentUser?.familia_id || "fam_kevin_admin";
+  const currentFamilyId = currentUser?.familia_id || "";
   const tabMetas = metas.filter(m => (m.tipo || 'individual') === activeTab);
   const filteredMetas = categoryFilter === 'Todos'
     ? tabMetas
@@ -297,7 +297,7 @@ export default function MetasScreen({
     try {
       setIsSubmittingGoal(true);
       await onAddGoal({
-        usuario_id: currentUser?.uid || "kevin-admin-uid",
+        usuario_id: currentUser?.uid || "",
         familia_id: currentFamilyId,
         tipo,
         titulo: titulo.trim(),
@@ -308,7 +308,7 @@ export default function MetasScreen({
         duracion_unidad: duracionUnidad,
         fecha_inicio: fechaInicio,
         fecha_fin: computedFechaFin,
-        miembros_asignados: tipo === 'familiar' ? selectedMemberIds : [currentUser?.uid || "kevin-admin-uid"],
+        miembros_asignados: tipo === 'familiar' ? selectedMemberIds : [currentUser?.uid || ""],
         generar_tareas_automaticas: generarTareas,
         dias_preferidos: diasPreferidos,
         hora_sugerida: horaSugerida,
@@ -358,7 +358,7 @@ export default function MetasScreen({
       descripcion: consDesc.trim(),
       categoria: 'Hogar',
       tiempo_estimado_min: Number(consMin),
-      creado_por: currentUser?.uid || "kevin-admin-uid"
+      creado_por: currentUser?.uid || ""
     });
 
     setConsTitulo('');
@@ -538,7 +538,7 @@ export default function MetasScreen({
                 <button
                   onClick={() => {
                     onAddGoal({
-                      usuario_id: currentUser?.uid || "kevin-admin-uid",
+                      usuario_id: currentUser?.uid || "",
                       familia_id: currentFamilyId,
                       tipo: 'individual',
                       titulo: sg.title,

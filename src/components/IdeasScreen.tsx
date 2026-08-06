@@ -150,7 +150,7 @@ export default function IdeasScreen({ currentUser, onAddTask, onAddGoal, showToa
       titulo: idea.suggestedGoal?.title || idea.title,
       categoria: (['Salud', 'Estudio', 'Finanzas', 'Hogar', 'Personal'].includes(idea.category) ? idea.category : 'Personal') as any,
       usuario_id: currentUser.uid,
-      familia_id: currentUser.familia_id || "fam_kevin_admin",
+      familia_id: currentUser.familia_id || "",
       tipo: 'individual',
       frecuencia_objetivo: 3,
       unidad_frecuencia: 'semana',
