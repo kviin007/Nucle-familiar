@@ -39,6 +39,20 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
     return typeof window !== 'undefined' && (!!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition);
   });
   const [recognitionInstance, setRecognitionInstance] = useState<any>(null);
+  const [recordSeconds, setRecordSeconds] = useState<number>(0);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    let interval: any = null;
+    if (recording) {
+      interval = setInterval(() => {
+        setRecordSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      setRecordSeconds(0);
+    }
+    return () => clearInterval(interval);
+  }, [recording]);
 
   // Gemini AI Reflection state
   const [reflectionLoading, setReflectionLoading] = useState<boolean>(false);
@@ -112,46 +126,79 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
     }
   };
 
-  const toggleRecording = () => {
-    if (!supported) return;
-
+  const toggleRecording = async () => {
     if (recording) {
       if (recognitionInstance) {
         recognitionInstance.stop();
       }
       setRecording(false);
+      setIsTranscribing(true);
+      setTimeout(() => setIsTranscribing(false), 1200);
     } else {
-      try {
-        const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        const rec = new SpeechRecognitionClass();
-        rec.continuous = false;
-        rec.lang = 'es-ES';
-        rec.interimResults = false;
+      setRecording(true);
+      if (supported) {
+        try {
+          const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+          const rec = new SpeechRecognitionClass();
+          rec.continuous = true;
+          rec.lang = 'es-ES';
+          rec.interimResults = true;
 
-        rec.onstart = () => {
-          setRecording(true);
-        };
+          rec.onresult = (event: any) => {
+            let currentTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              currentTranscript += event.results[i][0].transcript;
+            }
+            if (currentTranscript.trim()) {
+              setText((prev) => {
+                const base = prev.trim();
+                return base ? `${base} ${currentTranscript.trim()}` : currentTranscript.trim();
+              });
+            }
+          };
 
-        rec.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setText((prev) => (prev ? prev + ' ' : '') + transcript);
-        };
+          rec.onerror = (err: any) => {
+            console.error("Speech recognition error:", err);
+            setRecording(false);
+          };
 
-        rec.onerror = (err: any) => {
-          console.error("Speech recognition error:", err);
-          setRecording(false);
-        };
+          rec.onend = () => {
+            setRecording(false);
+          };
 
-        rec.onend = () => {
-          setRecording(false);
-        };
-
-        rec.start();
-        setRecognitionInstance(rec);
-      } catch (err) {
-        console.error("Error starting speech recognition:", err);
-        setRecording(false);
+          rec.start();
+          setRecognitionInstance(rec);
+        } catch (err) {
+          console.error("Error starting speech recognition:", err);
+          // Fallback to API simulation
+          handleFallbackApiTranscription();
+        }
+      } else {
+        // Fallback for browsers without WebSpeech API
+        handleFallbackApiTranscription();
       }
+    }
+  };
+
+  const handleFallbackApiTranscription = async () => {
+    setIsTranscribing(true);
+    try {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioData: 'simulated_audio' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.text) {
+          setText(prev => (prev ? `${prev} ${data.text}` : data.text));
+        }
+      }
+    } catch (err) {
+      console.error("API transcribe error:", err);
+    } finally {
+      setIsTranscribing(false);
+      setRecording(false);
     }
   };
 
@@ -347,6 +394,47 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
               ))}
             </div>
 
+            {/* Live Voice Recording Banner */}
+            {(recording || isTranscribing) && (
+              <div className="p-4 bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 rounded-2xl text-white shadow-lg space-y-2 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="relative flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-300 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-200"></span>
+                    </span>
+                    <span className="font-sans text-xs font-black uppercase tracking-wider">
+                      {isTranscribing ? "Procesando y Transcribiendo..." : "Grabando Nota de Voz en Vivo..."}
+                    </span>
+                  </div>
+
+                  <span className="font-mono text-xs font-bold bg-white/20 px-2.5 py-0.5 rounded-full">
+                    00:{recordSeconds < 10 ? `0${recordSeconds}` : recordSeconds}
+                  </span>
+                </div>
+
+                {/* Animated Sound Waves */}
+                <div className="flex items-center justify-center gap-1.5 py-2">
+                  <div className="w-1 bg-white/80 rounded-full h-4 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1 bg-white/80 rounded-full h-8 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1 bg-white/80 rounded-full h-6 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-1 bg-white/80 rounded-full h-10 animate-bounce" style={{ animationDelay: '450ms' }} />
+                  <div className="w-1 bg-white/80 rounded-full h-5 animate-bounce" style={{ animationDelay: '600ms' }} />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={toggleRecording}
+                    className="px-3.5 py-1.5 bg-white text-rose-600 hover:bg-rose-50 font-sans text-xs font-extrabold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-sm">stop_circle</span>
+                    <span>{isTranscribing ? "Transcribiendo..." : "Detener y Guardar Texto"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Entry Input Area */}
             <div className="relative">
               <textarea
@@ -357,22 +445,20 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
                 className="w-full p-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl font-sans text-xs sm:text-sm text-gray-800 focus:ring-2 focus:ring-brand-primary focus:bg-white focus:outline-none transition-all placeholder:text-gray-400 resize-none"
               />
 
-              {supported && (
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  title={recording ? "Detener grabación" : "Dictar nota de voz"}
-                  className={`absolute bottom-3 right-3 p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${
-                    recording
-                      ? 'bg-rose-500 text-white animate-pulse shadow-md'
-                      : 'bg-white text-gray-500 hover:bg-indigo-50 hover:text-brand-primary border border-slate-200 shadow-xs'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    {recording ? 'mic' : 'mic_none'}
-                  </span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={toggleRecording}
+                title={recording ? "Detener grabación" : "Dictar nota de voz"}
+                className={`absolute bottom-3 right-3 p-2.5 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                  recording
+                    ? 'bg-rose-500 text-white animate-pulse shadow-md ring-4 ring-rose-200'
+                    : 'bg-white text-gray-600 hover:bg-indigo-50 hover:text-brand-primary border border-slate-200 shadow-xs'
+                }`}
+              >
+                <span className="material-symbols-outlined text-lg">
+                  {recording ? 'mic' : 'mic_none'}
+                </span>
+              </button>
             </div>
 
             {/* Controls & Save */}

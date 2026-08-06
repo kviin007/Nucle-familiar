@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import EmptyStateIllustration from './EmptyStateIllustration';
+import GoogleTasksView from './GoogleTasksView';
 import { TareaDiaria, Usuario, Meta } from '../types';
 import { CheckCircle2, Circle, Target, Calendar, Clock, Sparkles, ChevronRight, ChevronDown, AlertCircle, Plus, Filter, Tag, FolderOpen, RefreshCw, ExternalLink, ListTodo, CalendarDays } from 'lucide-react';
 import { fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem } from '../services/googleWorkspace';
@@ -353,27 +354,10 @@ export default function HoyScreen({
                 </div>
               )}
 
-              {/* Google Tasks Section if available */}
-              {googleTasks.length > 0 && (
-                <div className="space-y-3 pt-4 border-t border-slate-200">
-                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                    <ListTodo size={16} className="text-brand-primary" />
-                    <span>Tareas de Google Tasks ({googleTasks.length})</span>
-                  </h4>
-                  <div className="bg-white rounded-2xl border border-indigo-50 p-4 space-y-2">
-                    {googleTasks.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-xs font-medium">
-                        <span className={t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-800 font-bold'}>
-                          {t.title}
-                        </span>
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${t.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                          {t.status === 'completed' ? 'Completada' : 'Pendiente'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Google Tasks View Component */}
+              <div className="pt-4 border-t border-slate-200">
+                <GoogleTasksView googleAccessToken={googleAccessToken} onConnectGoogleWorkspace={onConnectGoogleWorkspace} />
+              </div>
             </div>
           )}
         </div>
@@ -419,7 +403,7 @@ export default function HoyScreen({
           </motion.div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myPendingGoals.map(meta => {
+            {myPendingGoals.map((meta, index) => {
               const progressPct = meta.tipo === 'familiar'
                 ? (meta.progreso_por_miembro?.find(p => p.usuario_id === currentUser?.uid)?.porcentaje ?? meta.porcentaje_semanal ?? 0)
                 : (meta.porcentaje_semanal || 0);
@@ -427,9 +411,10 @@ export default function HoyScreen({
               return (
                 <motion.div
                   key={meta.meta_id}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.28, ease: 'easeOut', delay: index * 0.04 }}
                   className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -601,15 +586,17 @@ export default function HoyScreen({
                           className="divide-y divide-slate-100 border-t border-slate-100"
                         >
                           <div className="p-3 sm:p-4 space-y-2.5">
-                            {catTasks.map(tarea => {
+                            {catTasks.map((tarea, index) => {
                               const isDone = tarea.estado === 'completada';
                               const assigneeName = getAssigneeName(tarea.usuario_id);
 
                               return (
                                 <motion.div
                                   key={tarea.tarea_id}
-                                  initial={{ opacity: 0, x: -5 }}
-                                  animate={{ opacity: 1, x: 0 }}
+                                  initial={{ opacity: 0, y: 14 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -8 }}
+                                  transition={{ duration: 0.25, ease: 'easeOut', delay: index * 0.03 }}
                                   className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                                     isDone
                                       ? 'bg-emerald-50/40 border-emerald-100 opacity-75'

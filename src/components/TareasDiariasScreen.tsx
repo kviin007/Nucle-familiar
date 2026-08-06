@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { TareaDiaria, Usuario } from '../types';
 import { Plus, CheckCircle2, Circle, Clock, Tag, Calendar, User, Filter, Search, Sparkles, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { createTaskSchema, getZodErrors } from '../lib/validation';
 
 interface TareasDiariasScreenProps {
   currentUser: Usuario | null;
@@ -32,6 +34,8 @@ export default function TareasDiariasScreen({
 }: TareasDiariasScreenProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('Todas');
+  const [filterPriority, setFilterPriority] = useState<'todas' | 'alta' | 'critica'>('todas');
+  const [filterUser, setFilterUser] = useState<string>('todos');
   const [filterStatus, setFilterStatus] = useState<'todas' | 'pendientes' | 'completadas'>('pendientes');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -43,8 +47,10 @@ export default function TareasDiariasScreen({
   const [categoria, setCategoria] = useState<'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros'>('Hogar');
   const [visibleFamilia, setVisibleFamilia] = useState(true);
   const [esPrioridadAlta, setEsPrioridadAlta] = useState(false);
+  const [esCritica, setEsCritica] = useState(false);
   const [requiereAppExterna, setRequiereAppExterna] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const categories = ['Todas', 'Hogar', 'Estudio', 'Salud', 'Personal', 'Otros'];
 
@@ -52,11 +58,23 @@ export default function TareasDiariasScreen({
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!titulo.trim()) {
-      showToast("Por favor ingresa un título para la tarea.", "error");
+    // Validate using Zod createTaskSchema
+    const parseResult = createTaskSchema.safeParse({
+      titulo,
+      usuario_id: usuarioId || currentUser?.uid || '',
+      hora_programada: horaProgramada,
+      tiempo_estimado_min: Number(tiempoEstimado),
+      categoria
+    });
+
+    if (!parseResult.success) {
+      const errs = getZodErrors(parseResult);
+      setFormErrors(errs);
+      showToast("Por favor corrige los campos con errores en el formulario.", "error");
       return;
     }
 
+    setFormErrors({});
     setIsSubmitting(true);
     try {
       await onAddTask(
@@ -67,12 +85,14 @@ export default function TareasDiariasScreen({
         visibleFamilia,
         categoria,
         esPrioridadAlta,
-        false,
+        esCritica,
         undefined,
         requiereAppExterna
       );
       showToast("¡Tarea diaria agregada con éxito! ✨", "success");
       setTitulo('');
+      setEsCritica(false);
+      setEsPrioridadAlta(false);
       setRequiereAppExterna(false);
       setShowAddModal(false);
     } catch (err) {
@@ -91,6 +111,17 @@ export default function TareasDiariasScreen({
     }
     // Category
     if (filterCategory !== 'Todas' && t.categoria !== filterCategory) {
+      return false;
+    }
+    // Priority / Critical
+    if (filterPriority === 'alta' && !t.es_prioridad_alta) {
+      return false;
+    }
+    if (filterPriority === 'critica' && !t.es_critica) {
+      return false;
+    }
+    // Assigned Member
+    if (filterUser !== 'todos' && t.usuario_id !== filterUser) {
       return false;
     }
     // Status
@@ -138,77 +169,146 @@ export default function TareasDiariasScreen({
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-        <div className="flex flex-col md:flex-row items-center gap-3 justify-between">
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row items-center gap-3 justify-between">
           {/* Search */}
-          <div className="relative w-full md:w-72">
+          <div className="relative w-full lg:w-72">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar tarea..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 transition-all"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 transition-all"
             />
           </div>
 
-          {/* Status Tabs */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl w-full md:w-auto justify-center">
-            <button
-              type="button"
-              onClick={() => setFilterStatus('pendientes')}
-              className={`px-4 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                filterStatus === 'pendientes'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Pendientes ({tareas.filter(t => t.estado !== 'completada').length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterStatus('completadas')}
-              className={`px-4 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                filterStatus === 'completadas'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Completadas ({tareas.filter(t => t.estado === 'completada').length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterStatus('todas')}
-              className={`px-4 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                filterStatus === 'todas'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Todas ({tareas.length})
-            </button>
+          {/* Member Selector & Priority Filter */}
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Family Member Filter */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-2xl">
+              <User size={14} className="text-slate-500" />
+              <select
+                value={filterUser}
+                onChange={(e) => setFilterUser(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="todos">👥 Todos los miembros</option>
+                {usuarios.map(u => (
+                  <option key={u.uid} value={u.uid}>
+                    👤 {u.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Tabs */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setFilterStatus('pendientes')}
+                className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  filterStatus === 'pendientes'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Pendientes ({tareas.filter(t => t.estado !== 'completada').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('completadas')}
+                className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  filterStatus === 'completadas'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Completadas ({tareas.filter(t => t.estado === 'completada').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('todas')}
+                className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  filterStatus === 'todas'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Todas ({tareas.length})
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Categories Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-slate-100">
-          <span className="text-[11px] font-extrabold text-slate-400 uppercase flex items-center gap-1 pr-1">
-            <Filter size={12} /> Categoria:
-          </span>
-          {categories.map((cat) => (
+        {/* Priority & Category Sub-bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
+          {/* Priority Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="text-[11px] font-extrabold text-slate-400 uppercase flex items-center gap-1 shrink-0">
+              <AlertCircle size={12} /> Prioridad:
+            </span>
             <button
-              key={cat}
               type="button"
-              onClick={() => setFilterCategory(cat)}
+              onClick={() => setFilterPriority('todas')}
               className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap cursor-pointer ${
-                filterCategory === cat
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                filterPriority === 'todas'
+                  ? 'bg-slate-800 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {cat}
+              Todas
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setFilterPriority('alta')}
+              className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 ${
+                filterPriority === 'alta'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              <span>⭐ Alta Prioridad</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full">
+                {tareas.filter(t => t.es_prioridad_alta).length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterPriority('critica')}
+              className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 ${
+                filterPriority === 'critica'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
+              }`}
+            >
+              <span>🔥 Solo Críticas</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full">
+                {tareas.filter(t => t.es_critica).length}
+              </span>
+            </button>
+          </div>
+
+          {/* Categories Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="text-[11px] font-extrabold text-slate-400 uppercase flex items-center gap-1 shrink-0">
+              <Tag size={12} /> Categoría:
+            </span>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setFilterCategory(cat)}
+                className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap cursor-pointer ${
+                  filterCategory === cat
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -234,14 +334,18 @@ export default function TareasDiariasScreen({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTareas.map((tarea) => {
+          {filteredTareas.map((tarea, index) => {
             const isDone = tarea.estado === 'completada';
             const assigneeName = getAssigneeName(tarea.usuario_id);
             const assigneeAvatar = getAssigneeAvatar(tarea.usuario_id);
 
             return (
-              <div
+              <motion.div
                 key={tarea.tarea_id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.28, ease: 'easeOut', delay: index * 0.04 }}
                 className={`p-5 rounded-3xl border transition-all duration-200 flex flex-col justify-between gap-4 ${
                   isDone
                     ? 'bg-slate-50/80 border-slate-200 opacity-75'
@@ -250,17 +354,25 @@ export default function TareasDiariasScreen({
               >
                 <div className="space-y-2">
                   {/* Top Badges */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full flex items-center gap-1">
                       <Tag size={10} />
                       {tarea.categoria || 'Hogar'}
                     </span>
 
-                    {tarea.es_prioridad_alta && (
-                      <span className="bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <AlertCircle size={10} /> Alta Prioridad
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {tarea.es_critica && (
+                        <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                          <AlertCircle size={10} /> 🔥 Crítica
+                        </span>
+                      )}
+
+                      {tarea.es_prioridad_alta && (
+                        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <AlertCircle size={10} /> ⭐ Alta
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Title & Checkbox */}
@@ -302,7 +414,7 @@ export default function TareasDiariasScreen({
                     </span>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -335,11 +447,22 @@ export default function TareasDiariasScreen({
                 <input
                   type="text"
                   value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
+                  onChange={(e) => {
+                    setTitulo(e.target.value);
+                    if (formErrors.titulo) {
+                      setFormErrors(prev => ({ ...prev, titulo: '' }));
+                    }
+                  }}
                   placeholder="Ej: Preparar la cena, Hacer ejercicio..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                  required
+                  className={`w-full bg-slate-50 border rounded-2xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:outline-none transition-all ${
+                    formErrors.titulo ? 'border-rose-500 bg-rose-50/20 ring-2 ring-rose-200' : 'border-slate-300 focus:border-indigo-500'
+                  }`}
                 />
+                {formErrors.titulo && (
+                  <p className="font-sans text-xs text-rose-600 font-bold mt-1 flex items-center gap-1">
+                    <span>⚠️ {formErrors.titulo}</span>
+                  </p>
+                )}
               </div>
 
               {/* Asignar A */}
@@ -349,8 +472,13 @@ export default function TareasDiariasScreen({
                 </label>
                 <select
                   value={usuarioId}
-                  onChange={(e) => setUsuarioId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                  onChange={(e) => {
+                    setUsuarioId(e.target.value);
+                    if (formErrors.usuario_id) setFormErrors(prev => ({ ...prev, usuario_id: '' }));
+                  }}
+                  className={`w-full bg-slate-50 border rounded-2xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:outline-none transition-all ${
+                    formErrors.usuario_id ? 'border-rose-500 bg-rose-50/20' : 'border-slate-300 focus:border-indigo-500'
+                  }`}
                 >
                   {usuarios.map(u => (
                     <option key={u.uid} value={u.uid}>
@@ -358,6 +486,11 @@ export default function TareasDiariasScreen({
                     </option>
                   ))}
                 </select>
+                {formErrors.usuario_id && (
+                  <p className="font-sans text-xs text-rose-600 font-bold mt-1 flex items-center gap-1">
+                    <span>⚠️ {formErrors.usuario_id}</span>
+                  </p>
+                )}
               </div>
 
               {/* Categoría & Hora */}
@@ -386,9 +519,19 @@ export default function TareasDiariasScreen({
                   <input
                     type="time"
                     value={horaProgramada}
-                    onChange={(e) => setHoraProgramada(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                    onChange={(e) => {
+                      setHoraProgramada(e.target.value);
+                      if (formErrors.hora_programada) setFormErrors(prev => ({ ...prev, hora_programada: '' }));
+                    }}
+                    className={`w-full bg-slate-50 border rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none transition-all ${
+                      formErrors.hora_programada ? 'border-rose-500 bg-rose-50/20' : 'border-slate-300 focus:border-indigo-500'
+                    }`}
                   />
+                  {formErrors.hora_programada && (
+                    <p className="font-sans text-[10px] text-rose-600 font-bold mt-1">
+                      ⚠️ {formErrors.hora_programada}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -400,24 +543,44 @@ export default function TareasDiariasScreen({
                   </label>
                   <input
                     type="number"
-                    min="5"
-                    max="300"
+                    min="1"
+                    max="1440"
                     step="5"
                     value={tiempoEstimado}
-                    onChange={(e) => setTiempoEstimado(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                    onChange={(e) => {
+                      setTiempoEstimado(Number(e.target.value));
+                      if (formErrors.tiempo_estimado_min) setFormErrors(prev => ({ ...prev, tiempo_estimado_min: '' }));
+                    }}
+                    className={`w-full bg-slate-50 border rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none transition-all ${
+                      formErrors.tiempo_estimado_min ? 'border-rose-500 bg-rose-50/20' : 'border-slate-300 focus:border-indigo-500'
+                    }`}
                   />
+                  {formErrors.tiempo_estimado_min && (
+                    <p className="font-sans text-[10px] text-rose-600 font-bold mt-1">
+                      ⚠️ {formErrors.tiempo_estimado_min}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col justify-end space-y-2">
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
+                      checked={esCritica}
+                      onChange={(e) => setEsCritica(e.target.checked)}
+                      className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4"
+                    />
+                    <span className="text-rose-700 font-extrabold">🔥 Marcar como Tarea Crítica</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
                       checked={esPrioridadAlta}
                       onChange={(e) => setEsPrioridadAlta(e.target.checked)}
-                      className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                      className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
                     />
-                    <span>Prioridad Alta</span>
+                    <span>⭐ Prioridad Alta</span>
                   </label>
 
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">

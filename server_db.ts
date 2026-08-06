@@ -1001,7 +1001,17 @@ export const dbService = {
         const userRef = db.collection("usuarios").doc(uid);
         const userSnap = await userRef.get();
         if (userSnap.exists) {
-          await userRef.update(updates);
+          const currentData = userSnap.data();
+          // Filter out updates that would overwrite existing data with generic placeholders
+          const safeUpdates: any = {};
+          if (nombre && (!currentData?.nombre || currentData?.nombre === "Nuevo Usuario")) safeUpdates.nombre = nombre;
+          if (avatar_url && (!currentData?.avatar_url || currentData?.avatar_url.includes("unsplash"))) safeUpdates.avatar_url = avatar_url;
+          if (role && !currentData?.role) safeUpdates.role = role;
+          if (familia_id && !currentData?.familia_id) safeUpdates.familia_id = familia_id;
+
+          if (Object.keys(safeUpdates).length > 0) {
+            await userRef.update(safeUpdates);
+          }
         } else {
           // Provision new user
           const newUser: Usuario = {
@@ -1045,6 +1055,32 @@ export const dbService = {
       localDatabase.usuarios.push(newUser);
       return { success: true, updatedUser: newUser };
     }
+  },
+
+  savePushToken: async (uid: string, pushToken: string, platform?: string) => {
+    if (isFirestoreEnabled && db) {
+      try {
+        const userRef = db.collection("usuarios").doc(uid);
+        await userRef.set({
+          pushToken,
+          fcmToken: pushToken,
+          pushEnabled: true,
+          platform: platform || 'web',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        return { success: true };
+      } catch (e) {
+        console.error("[Firestore savePushToken Error]", e);
+      }
+    }
+    const u = localDatabase.usuarios.find(usr => usr.uid === uid);
+    if (u) {
+      (u as any).pushToken = pushToken;
+      (u as any).fcmToken = pushToken;
+      (u as any).pushEnabled = true;
+      (u as any).platform = platform || 'web';
+    }
+    return { success: true };
   },
 
   suspendUser: async (uid: string, suspend: boolean) => {

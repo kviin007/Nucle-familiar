@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Usuario, ConfigTareaCritica } from '../types';
+import { createTaskSchema, getZodErrors } from '../lib/validation';
 
 export type TaskCategory = 'Hogar' | 'Estudio' | 'Salud' | 'Personal' | 'Otros';
 
@@ -99,6 +100,7 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [success, setSuccess] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Gemini AI task generator state
   const [aiLoading, setAiLoading] = useState<boolean>(false);
@@ -151,20 +153,27 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
     e.preventDefault();
     if (isSubmitting || loading) return;
     setValidationError(null);
+    setFieldErrors({});
 
-    if (!recipient) {
-      setValidationError("Debes seleccionar un miembro de la familia para asignarle la tarea.");
+    const parseResult = createTaskSchema.safeParse({
+      titulo: title,
+      usuario_id: recipient,
+      hora_programada: scheduledTime || '12:00',
+      tiempo_estimado_min: Number(estimatedTime),
+      categoria: (category as any) || 'Hogar'
+    });
+
+    if (!parseResult.success) {
+      const errs = getZodErrors(parseResult);
+      setFieldErrors(errs);
+      const firstErrorMsg = Object.values(errs)[0] || "Campos requeridos faltantes o con formato incorrecto.";
+      setValidationError(firstErrorMsg);
       return;
     }
 
     const selectedUserExists = usuarios.some((u) => u.uid === recipient);
     if (!selectedUserExists) {
       setValidationError("El destinatario seleccionado no es válido.");
-      return;
-    }
-
-    if (!title.trim()) {
-      setValidationError("El título de la tarea es obligatorio.");
       return;
     }
 
@@ -233,6 +242,7 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
                     onChange={() => {
                       setRecipient(member.uid);
                       setValidationError(null);
+                      if (fieldErrors.usuario_id) setFieldErrors(prev => ({ ...prev, usuario_id: '' }));
                     }}
                     className="sr-only peer"
                   />
@@ -243,6 +253,11 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
                 </label>
               ))}
             </div>
+          )}
+          {fieldErrors.usuario_id && (
+            <p className="font-sans text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1">
+              <span>⚠️ {fieldErrors.usuario_id}</span>
+            </p>
           )}
         </div>
 
@@ -384,9 +399,17 @@ export default function AssignTaskScreen({ usuarios, onAddTask }: AssignTaskScre
               onChange={(e) => {
                 setTitle(e.target.value);
                 setValidationError(null);
+                if (fieldErrors.titulo) setFieldErrors(prev => ({ ...prev, titulo: '' }));
               }}
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-primary outline-none text-gray-800"
+              className={`w-full bg-slate-50 border rounded-xl p-3 text-sm focus:ring-2 outline-none text-gray-800 transition-all ${
+                fieldErrors.titulo ? 'border-rose-500 bg-rose-50/20 ring-2 ring-rose-200 focus:ring-rose-400' : 'border-slate-100 focus:ring-brand-primary'
+              }`}
             />
+            {fieldErrors.titulo && (
+              <p className="font-sans text-[11px] text-rose-600 font-bold mt-1 flex items-center gap-1">
+                <span>⚠️ {fieldErrors.titulo}</span>
+              </p>
+            )}
           </div>
 
           <div className="md:col-span-2">

@@ -670,9 +670,10 @@ export default function MetasScreen({
           return (
             <motion.div
               key={meta.meta_id}
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: index * 0.04 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.28, ease: 'easeOut', delay: index * 0.04 }}
               onClick={() => setSelectedGoalDetail(meta)}
               className={`bg-white rounded-3xl p-5 border shadow-xl flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 min-h-[200px] cursor-pointer relative group ${
                 deadlineInfo?.cardBorderClass 

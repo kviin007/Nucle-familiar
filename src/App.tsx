@@ -18,6 +18,8 @@ import FocusModeOverlay from './components/FocusModeOverlay';
 import LiveActivityBanner from './components/LiveActivityBanner';
 import GeminiAdvisorModal from './components/GeminiAdvisorModal';
 import { getGoogleToken, setGoogleToken } from './services/googleWorkspace';
+import { pushNotificationService } from './services/pushNotificationService';
+import ConfirmCriticalTaskModal from './components/ConfirmCriticalTaskModal';
 
 // Import Firebase Authentication and Firestore if available
 import { 
@@ -59,9 +61,71 @@ export default function App() {
   const [desbloqueosUsuarios, setDesbloqueosUsuarios] = useState<DesbloqueoUsuario[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
+  const [criticalTaskToConfirm, setCriticalTaskToConfirm] = useState<TareaDiaria | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isGeminiAdvisorOpen, setIsGeminiAdvisorOpen] = useState<boolean>(false);
   const [geminiAdvisorPrompt, setGeminiAdvisorPrompt] = useState<string>('');
   const [geminiAdvisorTitle, setGeminiAdvisorTitle] = useState<string>('Asistente Gemini IA');
+
+  // Local Cache Helpers
+  const saveToLocalCache = (key: string, data: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.warn(`Error caching ${key} to localStorage:`, e);
+    }
+  };
+
+  const getFromLocalCache = (key: string) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Online / Offline synchronization listener
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOnline(true);
+      showToast("🟢 Conexión restablecida. Sincronizando datos...", "info");
+
+      // Sync queued offline actions
+      const pendingActions = getFromLocalCache('pending_offline_actions') || [];
+      if (pendingActions.length > 0) {
+        for (const action of pendingActions) {
+          try {
+            if (action.type === 'toggle_task') {
+              await fetch('/api/tasks/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tarea_id: action.taskId })
+              });
+            }
+          } catch (e) {
+            console.error("Error flushing offline action:", action, e);
+          }
+        }
+        localStorage.removeItem('pending_offline_actions');
+        showToast("¡Cambios guardados localmente fueron sincronizados! ☁️", "success");
+      }
+      fetchState();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast("📡 Modo Sin Conexión: Cambios guardados temporalmente en LocalStorage.", "info");
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Toast System
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
@@ -211,6 +275,10 @@ export default function App() {
         setConsecuenciasPendientes(data.consecuenciasPendientes || []);
         setDesbloqueosUsuarios(data.desbloqueosUsuarios || []);
 
+        // Cache tareas and metas in LocalStorage
+        saveToLocalCache('cached_tareas', data.tareas || []);
+        saveToLocalCache('cached_metas', data.metas || []);
+
         // Sync local current user's details if modified on server
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
@@ -233,6 +301,10 @@ export default function App() {
       }
     } catch (e) {
       console.error("Error fetching synced state", e);
+      const cachedTareas = getFromLocalCache('cached_tareas');
+      const cachedMetas = getFromLocalCache('cached_metas');
+      if (cachedTareas) setTareas(cachedTareas);
+      if (cachedMetas) setMetas(cachedMetas);
     } finally {
       setLoading(false);
     }
@@ -284,6 +356,11 @@ export default function App() {
 
               setCurrentUser(profile);
               await fetchState();
+
+              // Register Push Notifications & FCM token
+              pushNotificationService.requestPermissionAndGetToken(firebaseUser.uid).catch(err => {
+                console.warn("[Push Notification Init Note]", err);
+              });
 
               if (profile.familia_id) {
                 setView('hoy');
@@ -382,8 +459,29 @@ export default function App() {
   }, [currentUser, pendingOnboardingData]);
 
   // Sync actions with Express backend
-  const handleToggleTask = async (taskId: string) => {
+  const executeToggleTask = async (taskId: string) => {
     const task = tareas.find(t => t.tarea_id === taskId);
+
+    if (!isOnline) {
+      // Offline mode mutation
+      const updatedTareas = tareas.map(t => {
+        if (t.tarea_id === taskId) {
+          const newStatus = t.estado === 'completada' ? 'pendiente' : 'completada';
+          return { ...t, estado: newStatus };
+        }
+        return t;
+      });
+      setTareas(updatedTareas);
+      saveToLocalCache('cached_tareas', updatedTareas);
+
+      const pending = getFromLocalCache('pending_offline_actions') || [];
+      pending.push({ type: 'toggle_task', taskId, timestamp: Date.now() });
+      saveToLocalCache('pending_offline_actions', pending);
+
+      showToast("💾 Guardado localmente. Se sincronizará al reconectarse.", "info");
+      return;
+    }
+
     try {
       const res = await fetch('/api/tasks/toggle', {
         method: 'POST',
@@ -393,7 +491,7 @@ export default function App() {
       if (res.ok) {
         // If task is transitioning to completed
         if (task && task.estado !== 'completada') {
-          if (task.es_prioridad_alta) {
+          if (task.es_prioridad_alta || task.es_critica) {
             try {
               const confetti = (await import('canvas-confetti')).default;
               confetti({
@@ -415,6 +513,15 @@ export default function App() {
     } catch (e) {
       console.error("Error toggling task", e);
     }
+  };
+
+  const handleToggleTask = async (taskId: string) => {
+    const task = tareas.find(t => t.tarea_id === taskId);
+    if (task && task.es_critica && task.estado !== 'completada') {
+      setCriticalTaskToConfirm(task);
+      return;
+    }
+    await executeToggleTask(taskId);
   };
 
   const handleTaskClick = async (taskId: string) => {
@@ -481,7 +588,22 @@ export default function App() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
         await fetchState();
+
+        if (esCritica || esPrioridadAlta) {
+          const newTaskObj: TareaDiaria = data.newTask || {
+            tarea_id: `task_${Date.now()}`,
+            usuario_id: userId,
+            titulo,
+            estado: 'pendiente',
+            hora_programada: scheduledTime,
+            es_critica: !!esCritica,
+            visible_familia: visible,
+            ultima_actualizacion: new Date().toISOString()
+          };
+          pushNotificationService.triggerTaskNotification(newTaskObj, esCritica ? 'critical' : 'reminder');
+        }
       }
     } catch (e) {
       console.error("Error creating task", e);
@@ -704,12 +826,33 @@ export default function App() {
         const provider = new GoogleAuthProvider();
         provider.addScope('https://www.googleapis.com/auth/calendar');
         provider.addScope('https://www.googleapis.com/auth/tasks');
+        provider.setCustomParameters({ prompt: 'select_account' });
+        
         const result = await signInWithPopup(auth, provider);
+        const firebaseUser = result.user;
+
+        // Async token verification before completing session redirect
+        const verifiedToken = await firebaseUser.getIdToken(true);
+        if (!verifiedToken) {
+          throw new Error("No se pudo verificar el token de autenticación de Google.");
+        }
+
+        // Asynchronously register or sync user profile on server
+        await fetch('/api/user/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${verifiedToken}` },
+          body: JSON.stringify({
+            uid: firebaseUser.uid,
+            nombre: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Usuario Google",
+            avatar_url: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop"
+          })
+        }).catch(err => console.warn("Error en sincronización previa post Google Auth:", err));
+
         const credential = GoogleAuthProvider.credentialFromResult(result);
         if (credential?.accessToken) {
           setGoogleAccessToken(credential.accessToken);
           setGoogleToken(credential.accessToken);
-          showToast("¡Sincronizado con Google Calendar y Tasks! 🗓️", "success");
+          showToast("¡Inicio de sesión exitoso y verificado con Google Workspace! 🗓️", "success");
         }
       } catch (err: any) {
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
@@ -717,13 +860,32 @@ export default function App() {
           return;
         }
         console.error("Error signing in with Google:", err);
-        if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        
+        if (err.code === 'auth/account-exists-with-different-credential') {
+          const existingEmail = err.customData?.email || err.email || '';
+          setLoginMethod('email');
+          setLoginMode('login');
+          if (existingEmail) {
+            setLoginEmail(existingEmail);
+          }
+          setErrorBanner(
+            `Ya existe una cuenta con el correo ${existingEmail ? `'${existingEmail}'` : ''} usando contraseña. Te hemos redirigido al formulario de acceso para que ingreses tu clave y vincules tu cuenta.`
+          );
+          showToast("Cuenta existente con contraseña. Por favor, inicia sesión con tu clave.", "info");
+          setView('onboarding');
+        } else if (err.code === 'auth/popup-blocked') {
+          setErrorBanner("El navegador bloqueó la ventana emergente de inicio de sesión de Google. Por favor, autoriza las ventanas emergentes e inténtalo de nuevo.");
+        } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
           const currentDomain = window.location.hostname;
           setErrorBanner(
-            `El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Para solucionarlo, el administrador debe agregar '${currentDomain}' en Firebase Console > Authentication > Settings > Authorized domains.`
+            `El dominio actual '${currentDomain}' no está en la lista de Dominios Autorizados de Firebase Console. Agrega '${currentDomain}' en Firebase Console > Authentication > Settings > Authorized domains.`
           );
+        } else if (err.code === 'auth/user-disabled') {
+          setErrorBanner("Tu cuenta de Google ha sido deshabilitada en la plataforma.");
+        } else if (err.code === 'auth/network-request-failed') {
+          setErrorBanner("Error de red al conectar con Google. Verifica tu conexión a internet.");
         } else {
-          setErrorBanner(`Error al conectar con Google: ${err.message || err}.`);
+          setErrorBanner(`Error al iniciar sesión con Google: ${err.message || err.code || 'Intenta de nuevo.'}`);
         }
       }
     } else {
@@ -740,6 +902,8 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/calendar');
       provider.addScope('https://www.googleapis.com/auth/tasks');
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
@@ -749,8 +913,10 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Error connecting Google Workspace:", err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        showToast("No se pudo conectar con Google Workspace.", "error");
+      if (err.code === 'auth/popup-blocked') {
+        showToast("Ventana emergente bloqueada por el navegador.", "error");
+      } else if (err.code !== 'auth/popup-closed-by-user') {
+        showToast(`No se pudo conectar con Google Workspace: ${err.message || 'Error de conexión.'}`, "error");
       }
     }
   };
@@ -1302,6 +1468,24 @@ export default function App() {
           </div>
         ) : (
           <div className="max-w-5xl mx-auto">
+            {!isOnline && (
+              <div className="mb-6 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl p-4 flex items-center justify-between gap-3 shadow-md text-left animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center font-bold shrink-0">
+                    <span className="material-symbols-outlined text-2xl">wifi_off</span>
+                  </div>
+                  <div>
+                    <h3 className="font-sans text-sm font-black uppercase tracking-wider">
+                      Modo Sin Conexión (Caché Local Activo)
+                    </h3>
+                    <p className="font-sans text-xs text-amber-50 mt-0.5">
+                      Tus tareas y metas se guardan temporalmente en LocalStorage y se sincronizarán automáticamente al reconectar con Firebase.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {!isFirestoreActive && (
               <div className="mb-6 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 flex items-center gap-3 shadow-sm text-left">
                 <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm">
@@ -1630,6 +1814,19 @@ export default function App() {
         familyName={familias[0]?.nombre}
         initialPrompt={geminiAdvisorPrompt}
         modalTitle={geminiAdvisorTitle}
+      />
+
+      {/* Confirm Critical Task Modal */}
+      <ConfirmCriticalTaskModal
+        isOpen={!!criticalTaskToConfirm}
+        task={criticalTaskToConfirm}
+        onConfirm={() => {
+          if (criticalTaskToConfirm) {
+            executeToggleTask(criticalTaskToConfirm.tarea_id);
+            setCriticalTaskToConfirm(null);
+          }
+        }}
+        onCancel={() => setCriticalTaskToConfirm(null)}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ViewType } from '../types';
+import { joinFamilySchema, getZodErrors } from '../lib/validation';
 
 export interface OnboardingData {
   onboardingAction: 'join' | 'create';
@@ -18,6 +19,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   const totalSlides = 3;
   const [onboardingAction, setOnboardingAction] = useState<'join' | 'create'>('create');
   const [inviteCode, setInviteCode] = useState<string>('');
+  const [joinError, setJoinError] = useState<string>('');
   const [familyName, setFamilyName] = useState<string>('');
   const [firstGoal, setFirstGoal] = useState<string>('');
   const [category, setCategory] = useState<'Salud' | 'Estudio' | 'Finanzas' | 'Hogar' | 'Personal'>('Personal');
@@ -25,9 +27,14 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   const handleNext = () => {
     if (slide < totalSlides) {
       if (slide === 2) {
-        if (onboardingAction === 'join' && !inviteCode.trim()) {
-          alert("Por favor introduce un código de invitación.");
-          return;
+        if (onboardingAction === 'join') {
+          const parseResult = joinFamilySchema.safeParse({ inviteCode });
+          if (!parseResult.success) {
+            const errs = getZodErrors(parseResult);
+            setJoinError(errs.inviteCode || 'Código de invitación inválido.');
+            return;
+          }
+          setJoinError('');
         }
         if (onboardingAction === 'create' && !familyName.trim()) {
           alert("Por favor introduce el nombre de tu familia.");
@@ -123,15 +130,35 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
                 <p className="font-sans text-[10px] text-gray-400">Crearemos un grupo familiar nuevo para ti y generaremos un código único.</p>
               </div>
             ) : (
-              <div className="space-y-2 animate-fade-in">
+              <div className="space-y-2 animate-fade-in text-left">
                 <input
-                  className="w-full px-5 py-3 rounded-full border border-slate-150 shadow-inner bg-white text-sm text-center focus:ring-2 focus:ring-brand-primary focus:outline-none uppercase font-mono font-bold"
+                  className={`w-full px-5 py-3 rounded-full border shadow-inner bg-white text-sm text-center focus:ring-2 focus:ring-brand-primary focus:outline-none uppercase font-mono font-bold transition-all ${
+                    joinError ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-200' : 'border-slate-150'
+                  }`}
                   placeholder="Ej: CODE-A1B2C3"
                   type="text"
                   value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setInviteCode(val);
+                    if (joinError) {
+                      const parseResult = joinFamilySchema.safeParse({ inviteCode: val });
+                      if (parseResult.success) {
+                        setJoinError('');
+                      } else {
+                        const errs = getZodErrors(parseResult);
+                        setJoinError(errs.inviteCode || '');
+                      }
+                    }
+                  }}
                 />
-                <p className="font-sans text-[10px] text-gray-400">Introduce el código que te compartió tu familiar para unirte.</p>
+                {joinError ? (
+                  <p className="font-sans text-[11px] text-rose-600 font-bold bg-rose-50 px-3 py-1.5 rounded-full border border-rose-200 flex items-center justify-center gap-1 animate-fade-in text-center">
+                    <span>⚠️ {joinError}</span>
+                  </p>
+                ) : (
+                  <p className="font-sans text-[10px] text-gray-400 text-center">Introduce el código que te compartió tu familiar para unirte.</p>
+                )}
               </div>
             )}
           </div>

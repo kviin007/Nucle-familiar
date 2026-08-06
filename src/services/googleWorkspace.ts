@@ -114,6 +114,37 @@ export async function fetchGoogleTasks(accessToken?: string): Promise<GoogleTask
 }
 
 /**
+ * Mark a Google Task item as completed
+ */
+export async function completeGoogleTask(taskId: string, accessToken?: string): Promise<boolean> {
+  const token = accessToken || getGoogleToken();
+  if (!token) {
+    throw new Error('No Google Access Token disponible');
+  }
+
+  const url = `https://www.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`;
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      status: 'completed',
+      completed: new Date().toISOString()
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `Error al completar la tarea en Google Tasks: ${response.statusText}`);
+  }
+
+  return true;
+}
+
+/**
  * Get configured Google Form feedback URL for family suggestions
  */
 const DEFAULT_FEEDBACK_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSc_EXAMPLE_FEEDBACK_FORM/viewform?embedded=true";

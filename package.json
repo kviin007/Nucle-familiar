@@ -28,7 +28,9 @@
     "node-cron": "^4.6.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "recharts": "^3.10.1",
+    "vite": "^6.2.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

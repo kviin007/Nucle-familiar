@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Usuario, TareaDiaria, Familia } from '../types';
+import FamilyInsightsDashboard from './FamilyInsightsDashboard';
 
 interface FamiliaScreenProps {
   usuarios: Usuario[];
@@ -34,6 +35,7 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'miembros' | 'insights'>('miembros');
 
   const getMemberCompletion = (userId: string) => {
     const memberTasks = tareas.filter(t => t.usuario_id === userId);
@@ -81,29 +83,67 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
             {familyName}
           </h2>
           <p className="font-sans text-sm text-gray-500">
-            Mira cómo le va a cada miembro de tu equipo hoy, o edita sus perfiles.
+            Mira cómo le va a cada miembro de tu equipo hoy, o revisa los análisis e insights semanales.
           </p>
         </div>
         
         {/* Dynamic Invite Code Display Pill */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleCopyCode}
+            className={`px-5 py-2.5 rounded-2xl font-sans text-xs font-extrabold border flex items-center gap-2.5 shadow-sm transition-all active:scale-95 ${
+              copied 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                : 'bg-white text-brand-primary border-indigo-50 hover:bg-slate-50'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm font-bold">
+              {copied ? 'check_circle' : 'content_copy'}
+            </span>
+            <span>
+              {copied ? '¡Código Copiado!' : `Código: ${invitationCode}`}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main View Tabs */}
+      <div className="flex border-b border-slate-200 gap-8">
         <button
-          onClick={handleCopyCode}
-          className={`px-5 py-2.5 rounded-2xl font-sans text-xs font-extrabold border flex items-center gap-2.5 shadow-sm transition-all active:scale-95 ${
-            copied 
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-              : 'bg-white text-brand-primary border-indigo-50 hover:bg-slate-50'
+          onClick={() => setActiveTab('miembros')}
+          className={`pb-3 font-sans text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'miembros'
+              ? 'border-brand-primary text-brand-primary'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
-          <span className="material-symbols-outlined text-sm font-bold">
-            {copied ? 'check_circle' : 'content_copy'}
-          </span>
-          <span>
-            {copied ? '¡Código Copiado!' : `Código: ${invitationCode}`}
-          </span>
+          <span className="material-symbols-outlined text-lg">group</span>
+          Integrantes y Puntos
+        </button>
+
+        <button
+          onClick={() => setActiveTab('insights')}
+          className={`pb-3 font-sans text-sm font-extrabold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'insights'
+              ? 'border-brand-primary text-brand-primary'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <span className="material-symbols-outlined text-lg">auto_awesome</span>
+          Insights IA y Estadísticas
         </button>
       </div>
 
-      {/* Grid of Members */}
+      {activeTab === 'insights' ? (
+        <FamilyInsightsDashboard
+          usuarios={usuarios}
+          tareas={tareas}
+          familias={familias}
+          currentUser={currentUser}
+        />
+      ) : (
+        <>
+          {/* Grid of Members */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {familyMembers.map((member, index) => {
           const completion = getMemberCompletion(member.uid);
@@ -307,6 +347,8 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
           </p>
         </div>
       </div>
+        </>
+      )}
 
       {/* EDIT PROFILE MODAL */}
       {editingUser && (

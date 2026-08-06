@@ -53,4 +53,45 @@
   box-shadow: 0 20px 30px -10px rgba(99, 102, 241, 0.22);
 }
 
+/* Tactile, springy button micro-animations */
+button, input[type="button"], input[type="submit"], [role="button"] {
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              background-color 0.2s ease, 
+              border-color 0.2s ease, 
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s ease;
+  will-change: transform;
+}
+
+button:hover:not(:disabled), input[type="button"]:hover:not(:disabled), input[type="submit"]:hover:not(:disabled) {
+  transform: translateY(-1.5px) scale(1.015);
+}
+
+button:active:not(:disabled), input[type="button"]:active:not(:disabled), input[type="submit"]:active:not(:disabled) {
+  transform: translateY(1px) scale(0.965);
+}
+
+button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Pulse animation for critical actions */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+
 

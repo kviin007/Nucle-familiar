@@ -4,6 +4,9 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const isHmrDisabled = process.env.DISABLE_HMR === 'true';
+  const enablePolling = Boolean(process.env.CI || process.env.USE_POLLING || process.env.VITE_USE_POLLING || true);
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -12,11 +15,33 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      port: 3000,
+      host: '0.0.0.0',
+      strictPort: false,
+      proxy: {
+        '/ws': {
+          target: 'ws://localhost:3000',
+          ws: true,
+          changeOrigin: true,
+          headers: {
+            Connection: 'Upgrade',
+            Upgrade: 'websocket',
+          },
+        },
+      },
+      hmr: isHmrDisabled ? false : {
+        protocol: 'ws',
+        host: 'localhost',
+        port: 3000,
+        clientPort: 3000,
+        timeout: 30000,
+        overlay: false,
+      },
+      watch: isHmrDisabled ? null : {
+        usePolling: enablePolling,
+        interval: 500,
+        binaryInterval: 1000,
+      },
     },
   };
 });

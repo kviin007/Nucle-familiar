@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Usuario, TareaDiaria, Familia } from '../types';
 import CodeExporterScreen from './CodeExporterScreen';
-import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X } from 'lucide-react';
+import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X, Bell, BellRing, Check, AlertTriangle } from 'lucide-react';
 import { auth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from '../lib/firebase';
 import { getFamilyFeedbackFormUrl } from '../services/googleWorkspace';
+import { pushNotificationService, PushNotificationPayload } from '../services/pushNotificationService';
 
 interface PerfilScreenProps {
   currentUser: Usuario | null;
@@ -43,6 +44,55 @@ export default function PerfilScreen({
   const [isSavingPass, setIsSavingPass] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const feedbackFormUrl = getFamilyFeedbackFormUrl();
+
+  // Push Notifications State
+  const [pushPermission, setPushPermission] = useState<string>(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  );
+  const [isActivatingPush, setIsActivatingPush] = useState(false);
+  const [pushHistory, setPushHistory] = useState<PushNotificationPayload[]>(
+    pushNotificationService.getNotificationHistory()
+  );
+
+  useEffect(() => {
+    const unsub = pushNotificationService.subscribe(() => {
+      setPushHistory([...pushNotificationService.getNotificationHistory()]);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleEnablePush = async () => {
+    setIsActivatingPush(true);
+    try {
+      const res = await pushNotificationService.requestPermissionAndGetToken(currentUser?.uid);
+      if (res.success) {
+        setPushPermission('granted');
+        showToast("¡Notificaciones Push y FCM activadas correctamente! 🔔", "success");
+      } else {
+        showToast(res.error || "No se pudieron activar las notificaciones.", "error");
+      }
+    } catch (e: any) {
+      showToast("Error al activar notificaciones push.", "error");
+    } finally {
+      setIsActivatingPush(false);
+    }
+  };
+
+  const handleTestPushNotification = () => {
+    const fakeTask: TareaDiaria = {
+      tarea_id: `test_${Date.now()}`,
+      usuario_id: currentUser?.uid || '',
+      titulo: 'Prueba: Tarea Crítica & Notificación FCM',
+      estado: 'pendiente',
+      hora_programada: '12:00',
+      tiempo_estimado_min: 15,
+      es_critica: true,
+      visible_familia: true,
+      ultima_actualizacion: new Date().toISOString()
+    };
+    pushNotificationService.triggerTaskNotification(fakeTask, 'critical');
+    showToast("¡Notificación push de prueba enviada! 🚨", "info");
+  };
 
   const activeFamily = familias.find(f => f.familia_id === currentUser?.familia_id);
   const userTasks = (tareas || []).filter(t => t.usuario_id === currentUser?.uid);
@@ -297,6 +347,66 @@ export default function PerfilScreen({
                 <span>Enviar Sugerencia (Google Form)</span>
                 <ExternalLink size={14} />
               </button>
+            </div>
+
+            {/* FCM & WEB PUSH NOTIFICATIONS CARD */}
+            <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                    <BellRing size={20} />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900">Notificaciones Push & FCM</h4>
+                    <p className="text-[10px] text-slate-500">Alertas en tiempo real para tareas críticas y recordatorios.</p>
+                  </div>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold flex items-center gap-1 ${
+                  pushPermission === 'granted'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {pushPermission === 'granted' ? <Check size={12} /> : <AlertTriangle size={12} />}
+                  {pushPermission === 'granted' ? 'Activas' : 'Inactivas'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {pushPermission !== 'granted' ? (
+                  <button
+                    type="button"
+                    onClick={handleEnablePush}
+                    disabled={isActivatingPush}
+                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Bell size={14} />
+                    <span>{isActivatingPush ? 'Activando...' : 'Activar Notificaciones Push'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleTestPushNotification}
+                    className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-2xl border border-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <BellRing size={14} />
+                    <span>Probar Notificación Push (Tarea Crítica)</span>
+                  </button>
+                )}
+              </div>
+
+              {pushHistory.length > 0 && (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <span className="text-[10px] font-extrabold text-slate-500 uppercase block">Historial Reciente ({pushHistory.length})</span>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {pushHistory.slice(0, 4).map((n) => (
+                      <div key={n.id} className="p-2 bg-slate-50 rounded-xl border border-slate-150 text-[11px]">
+                        <p className="font-extrabold text-slate-800">{n.title}</p>
+                        <p className="text-[10px] text-slate-600 line-clamp-1">{n.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Usuario, Familia, TareaDiaria, Meta } from '../types';
 import { getFamilyFeedbackFormUrl, setFamilyFeedbackFormUrl } from '../services/googleWorkspace';
+import ProgresoMensual from './ProgresoMensual';
 
 interface AdminPanelDashboardProps {
   usuarios: Usuario[];
@@ -184,6 +185,11 @@ export default function AdminPanelDashboard({ usuarios, familias, tareas, metas 
             </div>
           </div>
         ))}
+      </section>
+
+      {/* Monthly Recharts Visualization Component */}
+      <section>
+        <ProgresoMensual tareas={tareas} metas={metas} usuarios={usuarios} />
       </section>
 
       {/* Search and Filter */}

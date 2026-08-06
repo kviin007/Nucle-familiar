@@ -38,7 +38,7 @@ const firebaseConfig = {
 
 const isRealFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-const app = isRealFirebaseConfigured 
+export const app = isRealFirebaseConfigured 
   ? (getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)) 
   : null;
 
