@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { ViewType, Usuario, TareaDiaria, Meta, DiarioEntrada, Familia, ConsecuenciaPlantilla, RecompensaPlantilla, ConsecuenciaPendiente, DesbloqueoUsuario, ConfigTareaCritica } from './types';
 import OnboardingScreen, { OnboardingData } from './components/OnboardingScreen';
@@ -59,6 +60,12 @@ export default function App() {
   const [recompensasPlantillas, setRecompensasPlantillas] = useState<RecompensaPlantilla[]>([]);
   const [consecuenciasPendientes, setConsecuenciasPendientes] = useState<ConsecuenciaPendiente[]>([]);
   const [desbloqueosUsuarios, setDesbloqueosUsuarios] = useState<DesbloqueoUsuario[]>([]);
+  
+  // Exclusive global Firestore state for Admin views
+  const [allUsuariosAdmin, setAllUsuariosAdmin] = useState<Usuario[]>([]);
+  const [allFamiliasAdmin, setAllFamiliasAdmin] = useState<Familia[]>([]);
+  const [allTareasAdmin, setAllTareasAdmin] = useState<TareaDiaria[]>([]);
+  const [allMetasAdmin, setAllMetasAdmin] = useState<Meta[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [focusedTask, setFocusedTask] = useState<TareaDiaria | null>(null);
   const [criticalTaskToConfirm, setCriticalTaskToConfirm] = useState<TareaDiaria | null>(null);
@@ -259,6 +266,64 @@ export default function App() {
     };
   }, [currentUser?.familia_id]);
 
+  // Real-time Firestore Listeners exclusive for Admin (unfiltered across all families in platform)
+  useEffect(() => {
+    if (!firestore || !isAdmin) {
+      setAllUsuariosAdmin([]);
+      setAllFamiliasAdmin([]);
+      setAllTareasAdmin([]);
+      setAllMetasAdmin([]);
+      return;
+    }
+
+    // Listener for ALL usuarios
+    const qUsuarios = collection(firestore, "usuarios");
+    const unsubUsuarios = onSnapshot(qUsuarios, (snap) => {
+      const list: Usuario[] = [];
+      snap.forEach(d => list.push({ uid: d.id, ...d.data() } as Usuario));
+      setAllUsuariosAdmin(list);
+    }, (err) => {
+      console.warn("Sync admin all usuarios warning:", err);
+    });
+
+    // Listener for ALL familias
+    const qFamilias = collection(firestore, "familias");
+    const unsubFamilias = onSnapshot(qFamilias, (snap) => {
+      const list: Familia[] = [];
+      snap.forEach(d => list.push({ familia_id: d.id, ...d.data() } as Familia));
+      setAllFamiliasAdmin(list);
+    }, (err) => {
+      console.warn("Sync admin all familias warning:", err);
+    });
+
+    // Listener for ALL tareas_diarias
+    const qTareas = collection(firestore, "tareas_diarias");
+    const unsubTareas = onSnapshot(qTareas, (snap) => {
+      const list: TareaDiaria[] = [];
+      snap.forEach(d => list.push({ tarea_id: d.id, ...d.data() } as TareaDiaria));
+      setAllTareasAdmin(list);
+    }, (err) => {
+      console.warn("Sync admin all tareas warning:", err);
+    });
+
+    // Listener for ALL metas
+    const qMetas = collection(firestore, "metas");
+    const unsubMetas = onSnapshot(qMetas, (snap) => {
+      const list: Meta[] = [];
+      snap.forEach(d => list.push({ meta_id: d.id, ...d.data() } as Meta));
+      setAllMetasAdmin(list);
+    }, (err) => {
+      console.warn("Sync admin all metas warning:", err);
+    });
+
+    return () => {
+      unsubUsuarios();
+      unsubFamilias();
+      unsubTareas();
+      unsubMetas();
+    };
+  }, [isAdmin]);
+
   // Fetch full synchronized state from backend Express API
   const fetchState = async () => {
     try {
@@ -283,7 +348,7 @@ export default function App() {
         if (currentUser) {
           const freshProfile = (data.usuarios || []).find((u: any) => u.uid === currentUser.uid);
           if (freshProfile) {
-            const isUserAdminFromProfile = freshProfile.role === 'admin' || freshProfile.role === 'administrador' || freshProfile.isAdmin === true || freshProfile.uid === 'kevin-admin-uid';
+            const isUserAdminFromProfile = freshProfile.isAdmin === true || freshProfile.uid === 'kevin-admin-uid';
             if (isUserAdminFromProfile) {
               setIsAdmin(true);
             }
@@ -294,7 +359,7 @@ export default function App() {
               familia_id: freshProfile.familia_id,
               puntos: freshProfile.puntos,
               racha_actual: freshProfile.racha_actual,
-              role: isUserAdminFromProfile ? "admin" : (freshProfile.role || prev?.role || "member")
+              role: freshProfile.role || prev?.role || "member"
             }));
           }
         }
@@ -332,7 +397,7 @@ export default function App() {
               const uData = await syncRes.json();
               const tokenResult = await getIdTokenResult(firebaseUser);
               const serverRole = uData.updatedUser?.role;
-              const isUserAdmin = tokenResult.claims.admin === true || serverRole === "admin" || serverRole === "administrador" || uData.updatedUser?.isAdmin === true || firebaseUser.uid === "kevin-admin-uid";
+              const isUserAdmin = tokenResult.claims.admin === true || uData.updatedUser?.isAdmin === true || firebaseUser.uid === "kevin-admin-uid";
 
               setIdToken(tokenResult.token);
               setIsAdmin(isUserAdmin);
@@ -343,7 +408,7 @@ export default function App() {
                 email: firebaseUser.email,
                 avatar_url: uData.updatedUser?.avatar_url || firebaseUser.photoURL || "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
                 familia_id: uData.updatedUser?.familia_id || "",
-                role: isUserAdmin ? "admin" : (serverRole || "member")
+                role: serverRole || "member"
               };
 
               if (firestore) {
@@ -824,8 +889,6 @@ export default function App() {
     if (auth) {
       try {
         const provider = new GoogleAuthProvider();
-        provider.addScope('https://www.googleapis.com/auth/calendar');
-        provider.addScope('https://www.googleapis.com/auth/tasks');
         provider.setCustomParameters({ prompt: 'select_account' });
         
         const result = await signInWithPopup(auth, provider);
@@ -852,7 +915,7 @@ export default function App() {
         if (credential?.accessToken) {
           setGoogleAccessToken(credential.accessToken);
           setGoogleToken(credential.accessToken);
-          showToast("¡Inicio de sesión exitoso y verificado con Google Workspace! 🗓️", "success");
+          showToast("¡Inicio de sesión exitoso con Google! 👋", "success");
         }
       } catch (err: any) {
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
@@ -1413,7 +1476,7 @@ export default function App() {
               <div className="text-left">
                 <p className="font-sans text-[10px] font-bold text-gray-800 truncate max-w-[100px]">{currentUser?.nombre}</p>
                 <p className="font-sans text-[8px] text-amber-600 font-extrabold uppercase tracking-wider">
-                  {isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'administrador' || currentUser?.isAdmin ? 'ADMINISTRADOR' : 'MIEMBRO'}
+                  {isAdmin ? 'ADMINISTRADOR' : 'MIEMBRO'}
                 </p>
               </div>
             </div>
@@ -1524,176 +1587,186 @@ export default function App() {
                 </button>
               </div>
             )}
-            {view === 'hoy' && (
-              <HoyScreen
-                usuarios={usuarios}
-                tareas={tareas}
-                metas={metas}
-                diario={diario}
-                currentUser={currentUser}
-                googleAccessToken={googleAccessToken}
-                onConnectGoogleWorkspace={handleConnectGoogleWorkspace}
-                onToggleTask={handleTaskClick}
-                onAddTaskClick={() => setView('admin-assign-task')}
-                onGoToMetas={() => setView('metas')}
-                onGoToDiario={() => setView('diario')}
-              />
-            )}
-            {view === 'metas' && (
-              <MetasScreen
-                metas={metas}
-                usuarios={usuarios}
-                currentUser={currentUser}
-                consecuenciasPlantillas={consecuenciasPlantillas}
-                recompensasPlantillas={recompensasPlantillas}
-                consecuenciasPendientes={consecuenciasPendientes}
-                onAddGoal={handleAddGoal}
-                onCreateConsequenceTemplate={handleCreateConsequenceTemplate}
-                onCreateRewardTemplate={handleCreateRewardTemplate}
-                onResolvePendingConsequence={handleResolvePendingConsequence}
-                onEvaluateCompliance={handleEvaluateCompliance}
-                onOpenGeminiAdvisorWithPrompt={(promptText) => {
-                  setGeminiAdvisorPrompt(promptText);
-                  setGeminiAdvisorTitle('✨ Sugerencia de Meta con IA');
-                  setIsGeminiAdvisorOpen(true);
-                }}
-              />
-            )}
-            {view === 'familia' && (
-              <FamiliaScreen 
-                usuarios={usuarios} 
-                tareas={tareas} 
-                onInviteClick={() => showToast("¡Código de invitación copiado al portapapeles! 📋", "success")} 
-                onUpdateUser={handleUpdateUser}
-                currentUser={currentUser}
-                familias={familias}
-                onSelectUser={(uid) => {
-                  setSelectedUserId(uid);
-                  setView('admin-user-detail');
-                }}
-              />
-            )}
-            {view === 'diario' && (
-              <DiarioScreen 
-                diario={diario} 
-                usuarios={usuarios} 
-                currentUser={currentUser}
-                onAddEntry={handleAddDiaryEntry} 
-                onAddReaction={handleAddJournalReaction}
-              />
-            )}
-            {view === 'ideas' && (
-              isAdmin ? (
-                <IdeasScreen
-                  currentUser={currentUser}
-                  onAddTask={(taskData: any) => handleAddTask(
-                    taskData.titulo,
-                    taskData.usuario_id,
-                    taskData.hora_programada,
-                    taskData.tiempo_estimado_min,
-                    taskData.visible_familia,
-                    taskData.categoria,
-                    taskData.es_prioridad_alta
-                  )}
-                  onAddGoal={(goalData: any) => handleAddGoal(goalData)}
-                  showToast={showToast}
-                />
-              ) : (
-                <HoyScreen
-                  usuarios={usuarios}
-                  tareas={tareas}
-                  metas={metas}
-                  diario={diario}
-                  currentUser={currentUser}
-                  onToggleTask={handleTaskClick}
-                  onAddTaskClick={() => setView('tareas')}
-                  onGoToMetas={() => setView('metas')}
-                  onGoToDiario={() => setView('diario')}
-                />
-              )
-            )}
-            {view === 'tareas' && (
-              <TareasDiariasScreen
-                currentUser={currentUser}
-                usuarios={usuarios}
-                tareas={tareas}
-                onToggleTask={handleTaskClick}
-                onAddTask={handleAddTask}
-                showToast={showToast}
-              />
-            )}
-            {view === 'perfil' && (
-              <PerfilScreen
-                currentUser={currentUser}
-                usuarios={usuarios}
-                tareas={tareas}
-                familias={familias}
-                isAdmin={isAdmin}
-                onUpdateUser={handleUpdateUser}
-                onToggleTask={handleToggleTask}
-                onSnoozeTask={handleSnoozeTask}
-                showToast={showToast}
-              />
-            )}
-            {view === 'admin-dashboard' && (
-              <AdminPanelDashboard
-                usuarios={usuarios}
-                familias={familias}
-                tareas={tareas}
-                metas={metas}
-                onSelectUser={(uid) => {
-                  setSelectedUserId(uid);
-                  setView('admin-user-detail');
-                }}
-                onOpenGeminiAdvisor={() => {
-                  setGeminiAdvisorPrompt('');
-                  setGeminiAdvisorTitle('Asistente Gemini IA (General)');
-                  setIsGeminiAdvisorOpen(true);
-                }}
-              />
-            )}
-            {view === 'admin-families' && (
-              <FamilyNetworkScreen
-                usuarios={usuarios}
-                familias={familias}
-                onSelectUser={(uid) => {
-                  setSelectedUserId(uid);
-                  setView('admin-user-detail');
-                }}
-              />
-            )}
-            {view === 'admin-assign-task' && (
-              <AssignTaskScreen usuarios={usuarios} onAddTask={handleAddTask} />
-            )}
-            {view === 'admin-user-detail' && (
-              <UserDetailScreen
-                userId={selectedUserId || currentUser?.uid || ""}
-                usuarios={usuarios}
-                tareas={tareas}
-                familias={familias}
-                idToken={idToken}
-                onAddTaskClick={() => setView('admin-assign-task')}
-                onBack={() => setView('admin-families')}
-                onStateUpdate={fetchState}
-              />
-            )}
-            {view === 'code-exporter' && (
-              isAdmin ? (
-                <CodeExporterScreen />
-              ) : (
-                <PerfilScreen
-                  currentUser={currentUser}
-                  usuarios={usuarios}
-                  tareas={tareas}
-                  familias={familias}
-                  isAdmin={isAdmin}
-                  onUpdateUser={handleUpdateUser}
-                  onToggleTask={handleToggleTask}
-                  onSnoozeTask={handleSnoozeTask}
-                  showToast={showToast}
-                />
-              )
-            )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={view}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                {view === 'hoy' && (
+                  <HoyScreen
+                    usuarios={usuarios}
+                    tareas={tareas}
+                    metas={metas}
+                    diario={diario}
+                    currentUser={currentUser}
+                    googleAccessToken={googleAccessToken}
+                    onConnectGoogleWorkspace={handleConnectGoogleWorkspace}
+                    onToggleTask={handleTaskClick}
+                    onAddTaskClick={() => setView('admin-assign-task')}
+                    onGoToMetas={() => setView('metas')}
+                    onGoToDiario={() => setView('diario')}
+                  />
+                )}
+                {view === 'metas' && (
+                  <MetasScreen
+                    metas={metas}
+                    usuarios={usuarios}
+                    currentUser={currentUser}
+                    consecuenciasPlantillas={consecuenciasPlantillas}
+                    recompensasPlantillas={recompensasPlantillas}
+                    consecuenciasPendientes={consecuenciasPendientes}
+                    onAddGoal={handleAddGoal}
+                    onCreateConsequenceTemplate={handleCreateConsequenceTemplate}
+                    onCreateRewardTemplate={handleCreateRewardTemplate}
+                    onResolvePendingConsequence={handleResolvePendingConsequence}
+                    onEvaluateCompliance={handleEvaluateCompliance}
+                    onOpenGeminiAdvisorWithPrompt={(promptText) => {
+                      setGeminiAdvisorPrompt(promptText);
+                      setGeminiAdvisorTitle('✨ Sugerencia de Meta con IA');
+                      setIsGeminiAdvisorOpen(true);
+                    }}
+                  />
+                )}
+                {view === 'familia' && (
+                  <FamiliaScreen 
+                    usuarios={usuarios} 
+                    tareas={tareas} 
+                    onInviteClick={() => showToast("¡Código de invitación copiado al portapapeles! 📋", "success")} 
+                    onUpdateUser={handleUpdateUser}
+                    currentUser={currentUser}
+                    familias={familias}
+                    onSelectUser={(uid) => {
+                      setSelectedUserId(uid);
+                      setView('admin-user-detail');
+                    }}
+                  />
+                )}
+                {view === 'diario' && (
+                  <DiarioScreen 
+                    diario={diario} 
+                    usuarios={usuarios} 
+                    currentUser={currentUser}
+                    onAddEntry={handleAddDiaryEntry} 
+                    onAddReaction={handleAddJournalReaction}
+                  />
+                )}
+                {view === 'ideas' && (
+                  isAdmin ? (
+                    <IdeasScreen
+                      currentUser={currentUser}
+                      onAddTask={(taskData: any) => handleAddTask(
+                        taskData.titulo,
+                        taskData.usuario_id,
+                        taskData.hora_programada,
+                        taskData.tiempo_estimado_min,
+                        taskData.visible_familia,
+                        taskData.categoria,
+                        taskData.es_prioridad_alta
+                      )}
+                      onAddGoal={(goalData: any) => handleAddGoal(goalData)}
+                      showToast={showToast}
+                    />
+                  ) : (
+                    <HoyScreen
+                      usuarios={usuarios}
+                      tareas={tareas}
+                      metas={metas}
+                      diario={diario}
+                      currentUser={currentUser}
+                      onToggleTask={handleTaskClick}
+                      onAddTaskClick={() => setView('tareas')}
+                      onGoToMetas={() => setView('metas')}
+                      onGoToDiario={() => setView('diario')}
+                    />
+                  )
+                )}
+                {view === 'tareas' && (
+                  <TareasDiariasScreen
+                    currentUser={currentUser}
+                    usuarios={usuarios}
+                    tareas={tareas}
+                    onToggleTask={handleTaskClick}
+                    onAddTask={handleAddTask}
+                    showToast={showToast}
+                  />
+                )}
+                {view === 'perfil' && (
+                  <PerfilScreen
+                    currentUser={currentUser}
+                    usuarios={usuarios}
+                    tareas={tareas}
+                    familias={familias}
+                    isAdmin={isAdmin}
+                    onUpdateUser={handleUpdateUser}
+                    onToggleTask={handleToggleTask}
+                    onSnoozeTask={handleSnoozeTask}
+                    showToast={showToast}
+                  />
+                )}
+                {view === 'admin-dashboard' && (
+                  <AdminPanelDashboard
+                    usuarios={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allUsuariosAdmin : usuarios}
+                    familias={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allFamiliasAdmin : familias}
+                    tareas={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allTareasAdmin : tareas}
+                    metas={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allMetasAdmin : metas}
+                    onSelectUser={(uid) => {
+                      setSelectedUserId(uid);
+                      setView('admin-user-detail');
+                    }}
+                    onOpenGeminiAdvisor={() => {
+                      setGeminiAdvisorPrompt('');
+                      setGeminiAdvisorTitle('Asistente Gemini IA (General)');
+                      setIsGeminiAdvisorOpen(true);
+                    }}
+                  />
+                )}
+                {view === 'admin-families' && (
+                  <FamilyNetworkScreen
+                    usuarios={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allUsuariosAdmin : usuarios}
+                    familias={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allFamiliasAdmin : familias}
+                    onSelectUser={(uid) => {
+                      setSelectedUserId(uid);
+                      setView('admin-user-detail');
+                    }}
+                  />
+                )}
+                {view === 'admin-assign-task' && (
+                  <AssignTaskScreen usuarios={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allUsuariosAdmin : usuarios} onAddTask={handleAddTask} />
+                )}
+                {view === 'admin-user-detail' && (
+                  <UserDetailScreen
+                    userId={selectedUserId || currentUser?.uid || ""}
+                    usuarios={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allUsuariosAdmin : usuarios}
+                    tareas={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allTareasAdmin : tareas}
+                    familias={(isAdmin && (allUsuariosAdmin.length > 0 || allFamiliasAdmin.length > 0)) ? allFamiliasAdmin : familias}
+                    idToken={idToken}
+                    onAddTaskClick={() => setView('admin-assign-task')}
+                    onBack={() => setView('admin-families')}
+                    onStateUpdate={fetchState}
+                  />
+                )}
+                {view === 'code-exporter' && (
+                  isAdmin ? (
+                    <CodeExporterScreen />
+                  ) : (
+                    <PerfilScreen
+                      currentUser={currentUser}
+                      usuarios={usuarios}
+                      tareas={tareas}
+                      familias={familias}
+                      isAdmin={isAdmin}
+                      onUpdateUser={handleUpdateUser}
+                      onToggleTask={handleToggleTask}
+                      onSnoozeTask={handleSnoozeTask}
+                      showToast={showToast}
+                    />
+                  )
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
         )}
       </main>

@@ -1156,7 +1156,7 @@ export const dbService = {
         // Link user to this family (use set with merge: true so it creates user doc if missing)
         await db.collection("usuarios").doc(uid).set({
           familia_id,
-          role: "admin"
+          role: "organizador_familiar"
         }, { merge: true });
         return { success: true, newFamily };
       } catch (e) {
@@ -1168,16 +1168,16 @@ export const dbService = {
     const userIndex = localDatabase.usuarios.findIndex(u => u.uid === uid);
     if (userIndex !== -1) {
       localDatabase.usuarios[userIndex].familia_id = familia_id;
-      (localDatabase.usuarios[userIndex] as any).role = "admin";
+      (localDatabase.usuarios[userIndex] as any).role = "organizador_familiar";
     } else {
       localDatabase.usuarios.push({
         uid,
-        nombre: "Administrador de la Familia",
+        nombre: "Organizador de la Familia",
         avatar_url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=150&h=150&fit=crop",
         familia_id,
         racha_actual: 0,
         puntos: 0,
-        role: "admin",
+        role: "organizador_familiar",
         configuracion_privacidad: { visible_familia_por_defecto: true }
       } as any);
     }

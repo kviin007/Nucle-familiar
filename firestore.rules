@@ -117,6 +117,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Global Configuration Collection Rules (e.g. feedback_form)
+    match /configuracion_global/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // Default catch-all deny rule for all unmentioned documents
     match /{document=**} {
       allow read, write: if false;

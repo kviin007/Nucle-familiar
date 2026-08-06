@@ -3,7 +3,7 @@ import { Usuario, TareaDiaria, Familia } from '../types';
 import CodeExporterScreen from './CodeExporterScreen';
 import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X, Bell, BellRing, Check, AlertTriangle } from 'lucide-react';
 import { auth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from '../lib/firebase';
-import { getFamilyFeedbackFormUrl } from '../services/googleWorkspace';
+import { getFamilyFeedbackFormUrl, subscribeFamilyFeedbackFormUrl } from '../services/googleWorkspace';
 import { pushNotificationService, PushNotificationPayload } from '../services/pushNotificationService';
 
 interface PerfilScreenProps {
@@ -43,7 +43,14 @@ export default function PerfilScreen({
   const [showNewPass, setShowNewPass] = useState(false);
   const [isSavingPass, setIsSavingPass] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-  const feedbackFormUrl = getFamilyFeedbackFormUrl();
+  const [feedbackFormUrl, setFeedbackFormUrl] = useState<string>(getFamilyFeedbackFormUrl());
+
+  useEffect(() => {
+    const unsub = subscribeFamilyFeedbackFormUrl((url) => {
+      setFeedbackFormUrl(url);
+    });
+    return () => unsub();
+  }, []);
 
   // Push Notifications State
   const [pushPermission, setPushPermission] = useState<string>(

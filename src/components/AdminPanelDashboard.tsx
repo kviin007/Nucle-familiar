@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Usuario, Familia, TareaDiaria, Meta } from '../types';
-import { getFamilyFeedbackFormUrl, setFamilyFeedbackFormUrl } from '../services/googleWorkspace';
+import { getFamilyFeedbackFormUrl, setFamilyFeedbackFormUrl, subscribeFamilyFeedbackFormUrl } from '../services/googleWorkspace';
 import ProgresoMensual from './ProgresoMensual';
 
 interface AdminPanelDashboardProps {
@@ -19,6 +19,15 @@ export default function AdminPanelDashboard({ usuarios, familias, tareas, metas 
   const [isEditingFormUrl, setIsEditingFormUrl] = useState<boolean>(false);
   const [tempFormUrl, setTempFormUrl] = useState<string>(feedbackFormUrl);
   const [showEmbeddedForm, setShowEmbeddedForm] = useState<boolean>(true);
+  const [savingFormUrl, setSavingFormUrl] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = subscribeFamilyFeedbackFormUrl((url) => {
+      setFeedbackUrl(url);
+      setTempFormUrl(url);
+    });
+    return () => unsub();
+  }, []);
 
   const totalUsuarios = usuarios.length;
   const totalFamilias = familias.length;
@@ -324,16 +333,24 @@ export default function AdminPanelDashboard({ usuarios, familias, tareas, metas 
                 className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-medium text-slate-800 outline-none focus:border-purple-500"
               />
               <button
-                onClick={() => {
+                disabled={savingFormUrl}
+                onClick={async () => {
                   if (tempFormUrl.trim()) {
-                    setFamilyFeedbackFormUrl(tempFormUrl.trim());
-                    setFeedbackUrl(tempFormUrl.trim());
-                    setIsEditingFormUrl(false);
+                    setSavingFormUrl(true);
+                    try {
+                      await setFamilyFeedbackFormUrl(tempFormUrl.trim());
+                      setFeedbackUrl(tempFormUrl.trim());
+                      setIsEditingFormUrl(false);
+                    } catch (e) {
+                      console.error("Error guardando enlace:", e);
+                    } finally {
+                      setSavingFormUrl(false);
+                    }
                   }
                 }}
-                className="px-4 py-2 bg-purple-600 text-white font-sans text-xs font-bold rounded-xl hover:bg-purple-700 transition-all cursor-pointer"
+                className="px-4 py-2 bg-purple-600 text-white font-sans text-xs font-bold rounded-xl hover:bg-purple-700 transition-all cursor-pointer disabled:opacity-50"
               >
-                Guardar Enlace
+                {savingFormUrl ? 'Guardando...' : 'Guardar Enlace'}
               </button>
             </div>
             <p className="text-[10px] text-slate-500">

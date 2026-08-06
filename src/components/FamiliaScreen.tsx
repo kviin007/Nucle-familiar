@@ -207,8 +207,10 @@ export default function FamiliaScreen({ usuarios = [], tareas = [], onInviteClic
                 )}
               </h3>
               <p className="font-sans text-xs text-gray-500 mb-2">
-                {member.role === 'admin' || (isCurrentUser && (currentUser?.role === 'admin' || currentUser?.isAdmin))
-                  ? 'Administrador'
+                {member.role === 'organizador_familiar' 
+                  ? 'Organizador Familiar' 
+                  : member.role === 'admin' 
+                  ? 'Administrador Plataforma' 
                   : member.uid === 'user_maria' ? 'Madre' : member.uid === 'user_leo' ? 'Explorador' : member.uid === 'user_mia' ? 'Estudiante' : 'Miembro'}
               </p>
 

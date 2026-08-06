@@ -144,15 +144,69 @@ export async function completeGoogleTask(taskId: string, accessToken?: string): 
   return true;
 }
 
+import { firestore, doc, setDoc, getDoc, onSnapshot } from '../lib/firebase';
+
 /**
  * Get configured Google Form feedback URL for family suggestions
  */
-const DEFAULT_FEEDBACK_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSc_EXAMPLE_FEEDBACK_FORM/viewform?embedded=true";
+export const DEFAULT_FEEDBACK_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSc_EXAMPLE_FEEDBACK_FORM/viewform?embedded=true";
+const FEEDBACK_CACHE_KEY = 'family_feedback_form_url';
 
 export function getFamilyFeedbackFormUrl(): string {
-  return localStorage.getItem('family_feedback_form_url') || DEFAULT_FEEDBACK_FORM;
+  return localStorage.getItem(FEEDBACK_CACHE_KEY) || DEFAULT_FEEDBACK_FORM;
 }
 
-export function setFamilyFeedbackFormUrl(url: string): void {
-  localStorage.setItem('family_feedback_form_url', url.trim());
+export async function getFamilyFeedbackFormUrlAsync(): Promise<string> {
+  if (!firestore) return getFamilyFeedbackFormUrl();
+  try {
+    const docRef = doc(firestore, "configuracion_global", "feedback_form");
+    const snap = await getDoc(docRef);
+    if (snap.exists() && snap.data()?.url) {
+      const url = snap.data().url.trim();
+      localStorage.setItem(FEEDBACK_CACHE_KEY, url);
+      return url;
+    }
+  } catch (e) {
+    console.warn("Error leyendo feedback form URL de Firestore:", e);
+  }
+  return getFamilyFeedbackFormUrl();
+}
+
+export async function setFamilyFeedbackFormUrl(url: string): Promise<void> {
+  const trimmedUrl = url.trim();
+  localStorage.setItem(FEEDBACK_CACHE_KEY, trimmedUrl);
+
+  if (firestore) {
+    try {
+      const docRef = doc(firestore, "configuracion_global", "feedback_form");
+      await setDoc(docRef, {
+        url: trimmedUrl,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.error("Error guardando feedback form URL en Firestore:", e);
+      throw e;
+    }
+  }
+}
+
+export function subscribeFamilyFeedbackFormUrl(callback: (url: string) => void): () => void {
+  if (!firestore) {
+    callback(getFamilyFeedbackFormUrl());
+    return () => {};
+  }
+
+  const docRef = doc(firestore, "configuracion_global", "feedback_form");
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists() && snap.data()?.url) {
+      const url = snap.data().url.trim();
+      localStorage.setItem(FEEDBACK_CACHE_KEY, url);
+      callback(url);
+    } else {
+      callback(getFamilyFeedbackFormUrl());
+    }
+  }, (err) => {
+    console.warn("Aviso suscripción feedback form URL:", err);
+    callback(getFamilyFeedbackFormUrl());
+  });
 }
