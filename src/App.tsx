@@ -428,7 +428,14 @@ export default function App() {
               });
 
               if (profile.familia_id) {
-                setView('hoy');
+                const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+                const urlView = params ? params.get('view') as ViewType : null;
+                const validViews: ViewType[] = ['hoy', 'metas', 'familia', 'diario', 'ideas', 'tareas', 'perfil', 'admin-dashboard', 'admin-families', 'admin-assign-task', 'admin-user-detail', 'code-exporter'];
+                if (urlView && validViews.includes(urlView)) {
+                  setView(urlView);
+                } else {
+                  setView('hoy');
+                }
               } else {
                 setView('family_onboarding');
               }
@@ -522,6 +529,34 @@ export default function App() {
 
     applyPendingOnboarding();
   }, [currentUser, pendingOnboardingData]);
+
+  // PWA App Shortcuts: Synchronize view state with URL query parameter ?view=...
+  useEffect(() => {
+    const syncViewWithUrl = () => {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const validViews: ViewType[] = [
+        'hoy', 'metas', 'familia', 'diario', 'ideas', 'tareas', 
+        'perfil', 'admin-dashboard', 'admin-families', 'admin-assign-task', 
+        'admin-user-detail', 'code-exporter'
+      ];
+      if (viewParam && validViews.includes(viewParam as ViewType)) {
+        setView(viewParam as ViewType);
+      }
+    };
+
+    syncViewWithUrl();
+    window.addEventListener('popstate', syncViewWithUrl);
+    return () => window.removeEventListener('popstate', syncViewWithUrl);
+  }, []);
+
+  // PWA Daily Checklist Widget: Automatically update fixed persistent notification badge
+  useEffect(() => {
+    if (tareas && tareas.length >= 0 && currentUser) {
+      pushNotificationService.updateDailyChecklistWidgetNotification(tareas, currentUser.uid);
+    }
+  }, [tareas, currentUser]);
 
   // Sync actions with Express backend
   const executeToggleTask = async (taskId: string) => {

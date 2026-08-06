@@ -36,11 +36,11 @@ export default function HoyScreen({
   const [filterScope, setFilterScope] = useState<'mis_tareas' | 'familia'>('mis_tareas');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
-    'Hogar': false,
-    'Estudio': false,
-    'Salud': false,
-    'Personal': false,
-    'Otros': false
+    'Hogar': true,
+    'Estudio': true,
+    'Salud': true,
+    'Personal': true,
+    'Otros': true
   });
 
   // Google Calendar & Tasks state
@@ -366,15 +366,15 @@ export default function HoyScreen({
         <>
 
       {/* SECTION 1: METAS POR CUMPLIR */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-indigo-100 text-indigo-700 rounded-2xl">
-              <Target size={20} />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-indigo-500/15 text-indigo-300 rounded-2xl border border-indigo-400/20">
+              <Target size={22} />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Metas por Cumplir</h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <h3 className="text-xl font-black text-white tracking-tight">Metas por Cumplir</h3>
+              <p className="text-xs text-slate-300 font-medium leading-relaxed">
                 {myPendingGoals.length} meta{myPendingGoals.length !== 1 ? 's' : ''} pendiente{myPendingGoals.length !== 1 ? 's' : ''} · {completedGoalsCount} completada{completedGoalsCount !== 1 ? 's' : ''}
               </p>
             </div>
@@ -384,7 +384,7 @@ export default function HoyScreen({
             <button
               type="button"
               onClick={onGoToMetas}
-              className="text-xs font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-black text-indigo-300 hover:text-indigo-200 flex items-center gap-1 cursor-pointer bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/20 transition-all hover:scale-105"
             >
               <span>Ver todas las Metas</span>
               <ChevronRight size={16} />
@@ -396,13 +396,13 @@ export default function HoyScreen({
           <motion.div 
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white p-6 rounded-3xl border border-slate-200 text-center space-y-2 shadow-xs"
+            className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 text-center space-y-2 shadow-lg"
           >
-            <p className="text-sm font-extrabold text-slate-800">🎉 ¡Felicidades! Has completado todas tus metas activas.</p>
-            <p className="text-xs text-slate-500">Puedes crear una nueva meta o revisar tus metas familiares.</p>
+            <p className="text-base font-extrabold text-white">🎉 ¡Felicidades! Has completado todas tus metas activas.</p>
+            <p className="text-xs text-slate-300 leading-relaxed">Puedes crear una nueva meta o revisar tus metas familiares.</p>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {myPendingGoals.map((meta, index) => {
               const progressPct = meta.tipo === 'familiar'
                 ? (meta.progreso_por_miembro?.find(p => p.usuario_id === currentUser?.uid)?.porcentaje ?? meta.porcentaje_semanal ?? 0)
@@ -414,32 +414,34 @@ export default function HoyScreen({
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.28, ease: 'easeOut', delay: index * 0.04 }}
-                  className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all space-y-3"
+                  whileHover={{ y: -3, scale: 1.015 }}
+                  whileTap={{ scale: 0.985 }}
+                  transition={{ duration: 0.22, ease: 'easeOut', delay: index * 0.04 }}
+                  className="bg-slate-900/80 p-5 rounded-3xl border border-indigo-500/20 shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/40 transition-all space-y-3.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full inline-block mb-1.5">
+                      <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full inline-block mb-1.5 tracking-wider">
                         {meta.categoria || 'Hogar'} · {meta.frecuencia || 'Semanal'}
                       </span>
-                      <h4 className="font-extrabold text-sm text-slate-900">{meta.titulo}</h4>
+                      <h4 className="font-black text-base text-white leading-snug">{meta.titulo}</h4>
                     </div>
-                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-xl">
+                    <span className="text-xs font-black text-indigo-300 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-xl">
                       {progressPct}%
                     </span>
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                  <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
                     <div
-                      className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full transition-all duration-500"
+                      className="bg-gradient-to-r from-purple-500 to-indigo-500 h-full rounded-full transition-all duration-500 shadow-sm"
                       style={{ width: `${Math.min(100, progressPct)}%` }}
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold pt-1">
+                  <div className="flex items-center justify-between text-xs text-slate-300 font-bold pt-1">
                     <span>{meta.tipo === 'familiar' ? '👥 Meta Familiar' : '👤 Meta Personal'}</span>
-                    <span className="text-amber-600 font-extrabold">+{meta.puntos_recompensa || 50} pts</span>
+                    <span className="text-amber-400 font-black">+{meta.puntos_recompensa || 50} pts</span>
                   </div>
                 </motion.div>
               );
@@ -449,15 +451,15 @@ export default function HoyScreen({
       </div>
 
       {/* SECTION 2: TAREAS DIARIAS POR CATEGORÍA (ACORDEONES COLAPSABLES) */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-purple-100 text-purple-700 rounded-2xl">
-              <Calendar size={20} />
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-purple-500/15 text-purple-300 rounded-2xl border border-purple-400/20">
+              <Calendar size={22} />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Checklist de Tareas por Categoría</h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <h3 className="text-xl font-black text-white tracking-tight">Checklist de Tareas por Categoría</h3>
+              <p className="text-xs text-slate-300 font-medium leading-relaxed">
                 {pendingTasksTotal} pendiente{pendingTasksTotal !== 1 ? 's' : ''} · {completedScopedCount} de {totalScopedCount} completadas hoy
               </p>
             </div>
@@ -465,14 +467,14 @@ export default function HoyScreen({
 
           {/* Scope Selector */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center bg-slate-100 p-1 rounded-2xl">
+            <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800">
               <button
                 type="button"
                 onClick={() => setFilterScope('mis_tareas')}
-                className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
                   filterScope === 'mis_tareas'
-                    ? 'bg-white text-indigo-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Mis Tareas
@@ -480,10 +482,10 @@ export default function HoyScreen({
               <button
                 type="button"
                 onClick={() => setFilterScope('familia')}
-                className={`px-3 py-1 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
                   filterScope === 'familia'
-                    ? 'bg-white text-indigo-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Familia

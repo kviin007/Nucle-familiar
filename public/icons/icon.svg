@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c1d95"/>
+      <stop offset="50%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Base Container -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  
+  <!-- Outer Ring Glow -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#shield)" stroke-width="8" opacity="0.4" />
+  
+  <!-- Shield / Heart Core -->
+  <g filter="url(#glow)">
+    <path d="M256 96 C300 120 370 110 390 170 C410 260 290 350 256 410 C222 350 102 260 122 170 C142 110 212 120 256 96 Z" fill="url(#shield)"/>
+    <!-- Family Core Sparkle / Crown -->
+    <path d="M256 160 L272 208 L320 224 L272 240 L256 288 L240 240 L192 224 L240 208 Z" fill="url(#accent)"/>
+    <circle cx="256" cy="330" r="18" fill="#ffffff" opacity="0.9" />
+    <circle cx="210" cy="320" r="14" fill="#ffffff" opacity="0.7" />
+    <circle cx="302" cy="320" r="14" fill="#ffffff" opacity="0.7" />
+  </g>
+</svg>

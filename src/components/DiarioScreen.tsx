@@ -628,10 +628,12 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
                     return (
                       <motion.div
                         key={entry.entrada_id}
-                        initial={{ opacity: 0, y: 8 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100/60 shadow-xs space-y-4 hover:shadow-md transition-all"
+                        whileHover={{ y: -3, scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        transition={{ duration: 0.22 }}
+                        className="p-5.5 rounded-3xl bg-slate-900/80 border border-indigo-500/20 shadow-lg space-y-4 hover:border-indigo-500/40 hover:shadow-indigo-500/10 transition-all"
                       >
                         {/* Entry Top Header */}
                         <div className="flex items-start justify-between gap-3">
@@ -639,25 +641,25 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
                             <img
                               src={author.avatar_url}
                               alt={author.nombre}
-                              className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-xs"
+                              className="w-10 h-10 rounded-full object-cover border-2 border-indigo-400/40 shadow-xs"
                             />
                             <div>
                               <div className="flex items-center gap-2">
-                                <h4 className="font-sans text-xs font-bold text-gray-800">
-                                  {author.nombre} {isMine && <span className="text-[10px] text-brand-primary font-normal">(Tú)</span>}
+                                <h4 className="font-extrabold text-sm text-white">
+                                  {author.nombre} {isMine && <span className="text-xs text-purple-300 font-semibold">(Tú)</span>}
                                 </h4>
-                                <span className="text-sm">
+                                <span className="text-base">
                                   {entry.emocion === 'Great' ? '😁' : entry.emocion === 'Good' ? '🙂' : entry.emocion === 'Okay' ? '😐' : entry.emocion === 'Angry' ? '😠' : '😢'}
                                 </span>
                               </div>
-                              <p className="font-sans text-[10px] text-gray-400 font-medium">{entry.fecha}</p>
+                              <p className="font-medium text-xs text-slate-400">{entry.fecha}</p>
                             </div>
                           </div>
 
-                          <span className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold flex items-center gap-1 ${
-                            entry.visible_familia ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-gray-700'
+                          <span className={`px-2.5 py-1 rounded-full font-sans text-xs font-bold flex items-center gap-1 ${
+                            entry.visible_familia ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-slate-800 text-slate-300 border border-slate-700'
                           }`}>
-                            <span className="material-symbols-outlined text-[12px]">
+                            <span className="material-symbols-outlined text-[14px]">
                               {entry.visible_familia ? 'groups' : 'lock'}
                             </span>
                             {entry.visible_familia ? 'Familia' : 'Privado'}
@@ -665,7 +667,7 @@ export default function DiarioScreen({ diario = [], usuarios = [], currentUser, 
                         </div>
 
                         {/* Entry Body */}
-                        <p className="font-sans text-xs sm:text-sm text-gray-700 leading-relaxed pl-1 border-l-2 border-brand-primary/40">
+                        <p className="font-normal text-sm sm:text-base text-slate-200 leading-relaxed pl-3 border-l-2 border-purple-500">
                           {entry.texto}
                         </p>
 

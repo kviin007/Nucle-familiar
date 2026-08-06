@@ -314,6 +314,55 @@ class PushNotificationService {
     this.saveHistory();
   }
 
+  /**
+   * Update or create a fixed persistent notification summarizing today's task checklist.
+   * Uses a static tag 'daily_checklist_widget' so it updates in-place like a live widget widget/badge.
+   */
+  public async updateDailyChecklistWidgetNotification(tareas: TareaDiaria[], currentUserId?: string) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    // Filter today's tasks for current user (or all if no currentUserId specified)
+    const userTasks = tareas.filter(t => !currentUserId || t.usuario_id === currentUserId);
+    const totalCount = userTasks.length;
+    const completedCount = userTasks.filter(t => t.estado === 'completada').length;
+
+    const title = `📋 Checklist del Día - Núcleo`;
+    let body = '';
+    if (totalCount === 0) {
+      body = `No tienes tareas programadas para hoy. ¡Disfruta tu día!`;
+    } else if (completedCount === totalCount) {
+      body = `🎉 ¡Todas completadas! ${completedCount} de ${totalCount} tareas hechas hoy (100%).`;
+    } else {
+      const percent = Math.round((completedCount / totalCount) * 100);
+      body = `${completedCount} de ${totalCount} tareas completadas hoy (${percent}%).`;
+    }
+
+    const notificationOptions: any = {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag: 'daily_checklist_widget', // Tag único para actualizar en vez de apilar
+      renotify: false,               // Mantiene la actualización silenciosa sin chillar a cada clic
+      silent: true,
+      requireInteraction: true,      // Fijada en el panel de notificaciones
+      data: { url: '/?view=hoy' }
+    };
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration && registration.showNotification) {
+          await registration.showNotification(title, notificationOptions);
+          return;
+        }
+      }
+      new Notification(title, notificationOptions);
+    } catch (e) {
+      console.warn('[PWA Checklist Widget] Error enviando/actualizando notificación:', e);
+    }
+  }
+
   public getNotificationHistory(): PushNotificationPayload[] {
     return this.notificationHistory;
   }

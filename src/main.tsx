@@ -2,6 +2,11 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initPwaInstallListener, registerServiceWorker } from './services/pwaInstallService';
+
+// Initialize PWA installation event capturing and register Service Worker
+initPwaInstallListener();
+registerServiceWorker();
 
 // Exponential backoff WebSocket reconnection manager for Vite HMR
 function setupHmrWebSocketReconnect() {

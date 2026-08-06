@@ -661,7 +661,7 @@ export default function MetasScreen({
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
           {filteredMetas.map((meta, index) => {
           const owner = usuarios.find(u => u.uid === meta.usuario_id);
           const isFamiliar = meta.tipo === 'familiar';
@@ -673,12 +673,14 @@ export default function MetasScreen({
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: 'easeOut', delay: index * 0.04 }}
+              whileHover={{ y: -4, scale: 1.015 }}
+              whileTap={{ scale: 0.985 }}
+              transition={{ duration: 0.22, ease: 'easeOut', delay: index * 0.04 }}
               onClick={() => setSelectedGoalDetail(meta)}
-              className={`bg-white rounded-3xl p-5 border shadow-xl flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 min-h-[200px] cursor-pointer relative group ${
+              className={`bg-white rounded-3xl p-5 border shadow-xl flex flex-col justify-between transition-all duration-300 min-h-[200px] cursor-pointer relative group ${
                 deadlineInfo?.cardBorderClass 
                   ? deadlineInfo.cardBorderClass 
-                  : 'border-indigo-50/80 shadow-indigo-100/20'
+                  : 'border-indigo-100/80 shadow-indigo-100/20 hover:border-purple-300 hover:shadow-purple-100/40'
               }`}
             >
               {/* Top Badge for Deadline Alert (if critical or near) */}

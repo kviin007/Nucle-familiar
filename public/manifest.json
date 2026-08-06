@@ -1,0 +1,59 @@
+{
+  "name": "Núcleo Familiar",
+  "short_name": "Núcleo",
+  "description": "Gestión y coordinación de tareas, metas y hábitos para toda la familia",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#7c3aed",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ver tareas de hoy",
+      "short_name": "Tareas",
+      "description": "Ver y gestionar tus tareas de hoy en Núcleo Familiar",
+      "url": "/?view=hoy",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Ver metas",
+      "short_name": "Metas",
+      "description": "Ver tus metas familiares y hábitos",
+      "url": "/?view=metas",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Usuario, TareaDiaria, Familia } from '../types';
 import CodeExporterScreen from './CodeExporterScreen';
-import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X, Bell, BellRing, Check, AlertTriangle } from 'lucide-react';
+import { Sparkles, User, Shield, Award, Flame, Code, Camera, CheckCircle2, Upload, Lock, Key, Eye, EyeOff, MessageSquarePlus, ExternalLink, X, Bell, BellRing, Check, AlertTriangle, Smartphone, Download } from 'lucide-react';
 import { auth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from '../lib/firebase';
 import { getFamilyFeedbackFormUrl, subscribeFamilyFeedbackFormUrl } from '../services/googleWorkspace';
 import { pushNotificationService, PushNotificationPayload } from '../services/pushNotificationService';
+import { subscribePwaInstall, promptPwaInstall, isPwaInstalled } from '../services/pwaInstallService';
 
 interface PerfilScreenProps {
   currentUser: Usuario | null;
@@ -60,6 +61,26 @@ export default function PerfilScreen({
   const [pushHistory, setPushHistory] = useState<PushNotificationPayload[]>(
     pushNotificationService.getNotificationHistory()
   );
+
+  // PWA Install State
+  const [canInstallPwa, setCanInstallPwa] = useState<boolean>(false);
+  const [alreadyInstalledPwa, setAlreadyInstalledPwa] = useState<boolean>(false);
+
+  useEffect(() => {
+    setAlreadyInstalledPwa(isPwaInstalled());
+    const unsub = subscribePwaInstall((canInstall) => {
+      setCanInstallPwa(canInstall);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleInstallPwaClick = async () => {
+    const installed = await promptPwaInstall();
+    if (installed) {
+      showToast("¡Aplicación 'Núcleo' instalada con éxito! 📱", "success");
+      setAlreadyInstalledPwa(true);
+    }
+  };
 
   useEffect(() => {
     const unsub = pushNotificationService.subscribe(() => {
@@ -412,6 +433,59 @@ export default function PerfilScreen({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* PWA INSTALLATION CARD */}
+            <div className="bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900 text-white p-5 rounded-3xl shadow-md border border-purple-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-purple-500/20 text-purple-300 rounded-xl border border-purple-400/30">
+                    <Smartphone size={20} />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-extrabold text-white">Aplicación Móvil (PWA)</h4>
+                    <p className="text-[10px] text-purple-200/80">Instálala en tu celular para acceder sin navegador.</p>
+                  </div>
+                </div>
+                {alreadyInstalledPwa ? (
+                  <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full text-[10px] font-black flex items-center gap-1">
+                    <Check size={12} /> Instalada
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-400/30 rounded-full text-[10px] font-black">
+                    Standalone
+                  </span>
+                )}
+              </div>
+
+              {alreadyInstalledPwa ? (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-xs text-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                  <p className="text-[11px] leading-tight">
+                    ¡La aplicación ya está instalada en modo nativo en este dispositivo!
+                  </p>
+                </div>
+              ) : canInstallPwa ? (
+                <button
+                  type="button"
+                  onClick={handleInstallPwaClick}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-2xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Download size={15} />
+                  <span>Instalar App "Núcleo" en Celular</span>
+                </button>
+              ) : (
+                <div className="p-3 bg-indigo-950/60 border border-indigo-700/50 rounded-2xl text-[11px] text-indigo-200 space-y-1">
+                  <p className="font-extrabold text-amber-300 flex items-center gap-1">
+                    <Smartphone size={13} /> ¿Cómo instalar en Celular?
+                  </p>
+                  <p className="text-[10px] leading-normal text-indigo-200/90">
+                    • <strong>Android (Chrome):</strong> Toca el menú (⋮) o usa el botón "Instalar aplicación".
+                    <br />
+                    • <strong>iPhone / iPad (Safari):</strong> Toca el botón <strong>Compartir (⎘)</strong> y elige <strong>"Agregar a inicio" (➕)</strong>.
+                  </p>
                 </div>
               )}
             </div>
